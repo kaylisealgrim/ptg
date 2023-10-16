@@ -1,0 +1,801 @@
+---
+title: "R Notebook"
+output:
+  word_document: default
+  html_notebook: default
+---
+
+```{r}
+data <- read.csv("ptg_data.csv")
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(Hmisc)
+library(knitr)
+library(lavaan)
+library(lcmm)
+```
+
+Descriptives and Correlations
+```{r}
+data1 <- dplyr::select(data, SUBJID, ss1.Age, ss1.Sex, ss1.Race, wave1_ptg, wave2_ptg, wave3_ptg, wave4_ptg, wave1_pts, wave2_pts, wave3_pts, wave1_etv, wave2_etv, wave3_etv)
+
+data1$ss1.Race <- factor(data1$ss1.Race,
+                         levels = c(1,2,3,4,5,6),
+                         labels = c("Black or African American", "Hispanic or Latino/a", "Asian or Pacific Islander","White or Caucasian","Mixed Race","Other"))
+data1 <- data1 %>% mutate(ss1.Sex=recode(ss1.Sex,'1'='1','2'='0'))
+data1 <- data1 %>% mutate(ss1.Age=as.numeric(ss1.Age), na.rm = TRUE)
+df_long <- data1 %>%
+  pivot_longer(
+    cols = -c(SUBJID, `ss1.Age`, `ss1.Sex`, `ss1.Race`), # Exclude SUBJID from reshaping
+    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
+    names_pattern = "(wave\\d+)_(ptg)"  # Use a regular expression to match old column names
+  )
+df_clean <- na.omit(df_long)
+df_numeric <- df_clean
+# Remove the letters from the 'SUBJID' column + wave column
+df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
+```
+```{r}
+view(df_long)
+```
+### MD: Intercept-only model
+```{r}
+imodel <- "Intercept =~ 1*walden_0 + 1*walden_1 + 1*walden_2 + 1*walden_3"
+ifit <- growth(imodel, data=pathwayswide)
+summary(ifit, fit.measures=T)
+
+```
+
+##Model 1 = Intercept Only, variance controlled at 0
+```{r}
+m1 <- '
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
+i ~~ 0*i
+wave1_ptg ~~ r*wave1_ptg 
+wave2_ptg ~~ r*wave2_ptg 
+wave3_ptg ~~ r*wave3_ptg
+wave4_ptg ~~ r*wave4_ptg
+'
+m1_fit <- growth(m1, data = data1)
+summary(m1_fit)
+parameterestimates(m1_fit, standardized = TRUE)
+fitmeasures(m1_fit)
+```
+
+Model 2 = Intercept only, variance > 0, random intercept model (models that individuals will have different intercepts)
+```{r}
+m2 <- '
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
+wave1_ptg ~~ r*wave1_ptg 
+wave2_ptg ~~ r*wave2_ptg 
+wave3_ptg ~~ r*wave3_ptg
+wave4_ptg ~~ r*wave4_ptg'
+m2_fit <- growth(m2, data = data1)
+summary(m2_fit)
+parameterestimates(m2_fit, standardized = TRUE)
+fitmeasures(m2_fit)
+```
+
+### MD Linear model
+```{r}
+smodel <- "Intercept =~ 1*walden_0 + 1*walden_1 + 1*walden_2 + 1*walden_3 
+Slope =~ 0*walden_0 + .1*walden_1 + .2*walden_2 + .3*walden_3"
+sfit <- growth(smodel, data=pathwayswide)
+summary(sfit, fit.measures=T)
+#this is a text comment within code.
+```
+```{r}
+m3a <- "Intercept =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg 
+Slope =~ 0*wave1_ptg + .1*wave2_ptg + .2*wave3_ptg + .3*wave4_ptg"
+m3a_fit <- growth(m3a, data=data1)
+summary(m3a_fit, fit.measures=T)
+```
+
+Model 3 = Random slope
+```{r}
+m3b <- '
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
+s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+s ~ 0*1
+s ~~ 0*i
+wave1_ptg ~~ r*wave1_ptg 
+wave2_ptg ~~ r*wave2_ptg 
+wave3_ptg ~~ r*wave3_ptg
+'
+m3b_fit <- growth(m3b, data = data1)
+summary(m3b_fit)
+parameterestimates(m3b_fit, standardized = TRUE)
+fitmeasures(m3b_fit)
+```
+Model 4 = Allow slope to vary
+```{r}
+m4 <- '
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
+s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+wave1_ptg ~~ r*wave1_ptg 
+wave2_ptg ~~ r*wave2_ptg 
+wave3_ptg ~~ r*wave3_ptg
+'
+m4_fit <- growth(m4, data = data1)
+summary(m4_fit)
+parameterestimates(m4_fit, standardized = TRUE)
+fitmeasures(m4_fit)
+```
+Model 5 = Allow residuals to vary
+```{r}
+m5 <- '
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
+s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+'
+m5_fit <- growth(m5, data = data1)
+summary(m5_fit)
+parameterestimates(m5_fit, standardized = TRUE)
+fitmeasures(m5_fit)
+```
+
+### MD Quadratic model
+This is not code, so we can type normally without a hashtag.
+```{r}
+qmodel <- "Intercept =~ 1*walden_0 + 1*walden_1 + 1*walden_2 + 1*walden_3 
+Slope =~ 0*walden_0 + .1*walden_1 + .2*walden_2 + .3*walden_3 
+Quadratic =~ 0*walden_0 + .01*walden_1 + .04*walden_2 + .09*walden_3"
+qfit <- growth(qmodel, data=pathwayswide)
+summary(qfit, fit.measures=T)
+```
+
+Model 6 = quadratic growth model
+```{r}
+m6 <- "Intercept =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg 
+Slope =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg + 3*wave4_ptg
+Quadratic =~ 0*wave1_ptg + .01*wave2_ptg + .04*wave3_ptg + .09*wave4_ptg"
+m6_fit <- growth(m6, data=data1)
+summary(m6_fit, fit.measures=T)
+```
+
+
+```{r}
+ggplot(df_clean, aes(x=wave, y=ptg, group = SUBJID)) +
+  geom_point(size = .1) +
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess")
+```
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, group=SUBJID, colour=SUBJID)) +
+  geom_point(size=.1) +
+  geom_line(size=.1) +
+  geom_smooth(se=FALSE, method="loess", aes(colour=NULL))
+
+```
+
+
+
+
+
+```{r}
+class(data1)
+dim(data1) 
+names(data1) 
+str(data1) 
+glimpse(data1) 
+summary(data1)
+```
+
+
+```{r}
+data1$ss1.Race
+```
+```{r}
+ggplot(data1, aes(x = ss1.Race)) +
+  geom_bar(fill = "pink", color = "black") +
+  labs(x = "Race", y = "Count") +
+  theme_minimal()
+```
+```{r}
+df_long <- data1 %>%
+  pivot_longer(
+    cols = -SUBJID,  # Exclude SUBJID from reshaping
+    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
+    names_pattern = "(wave\\d+)_(pts|ptg)"  # Use a regular expression to match old column names
+  )
+
+```
+```{r}
+df_long
+```
+
+
+```{r}
+df_long_cleaned <- na.omit(df_long)
+```
+```{r}
+df_long_cleaned
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculate the mean ptg at each wave
+mean_ptg_by_wave <- df_long %>%
+  group_by(wave) %>%
+  summarise(mean_ptg = mean(ptg, na.rm = TRUE))
+```
+```{r}
+mean_ptg_by_wave
+```
+
+```{r}
+ggplot(mean_ptg_by_wave, aes(x = wave, y = mean_ptg)) +
+  geom_col()
+```
+```{r}
+data3 <- na.omit(data.frame(data1$wave1_ptg, data1$wave2_ptg, data1$wave3_ptg))
+```
+```{r}
+ptg.cov <- cov(data3)
+```
+```{r}
+data3
+```
+
+
+
+```{r}
+mean_ptg_by_wave
+```
+```{r}
+ptg_mean <- c(3.35, 3.45, 3.48)
+```
+
+
+
+
+```{r}
+ggplot(data,aes(x=wave1_ptg)) +   geom_histogram(binwidth=.4) 
+```
+```{r}
+ggplot(data,aes(x=wave2_ptg)) +   geom_histogram(binwidth = .4) 
+```
+```{r}
+ggplot(data,aes(x=wave3_ptg)) +   geom_histogram(binwidth = .4) 
+```
+```{r}
+ggplot(data,aes(x=wave1_pts)) +   geom_histogram(binwidth = .2) 
+```
+```{r}
+ggplot(data,aes(x=wave1_etv)) +   geom_histogram(binwidth = .2) 
+```
+
+```{r}
+df <- data1 %>% select(c(5:13))
+data2 <- data1 %>% 
+  mutate(across(contains("wave"), scale))
+```
+```{r}
+data2
+```
+```{r}
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                     result=c("none", "html", "latex")){
+    #Compute correlation matrix
+    require(Hmisc)
+    x <- as.matrix(x)
+    correlation_matrix<-rcorr(x, type=method[1])
+    R <- correlation_matrix$r # Matrix of correlation coeficients
+    p <- correlation_matrix$P # Matrix of p-value 
+    
+    ## Define notions for significance levels; spacing is important.
+    mystars <- ifelse(p < .0001, "****", ifelse(p < .001, "*** ", ifelse(p < .01, "**  ", ifelse(p < .05, "*   ", "    "))))
+    
+    ## trunctuate the correlation matrix to two decimal
+    R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1]
+    
+    ## build a new matrix that includes the correlations with their apropriate stars
+    Rnew <- matrix(paste(R, mystars, sep=""), ncol=ncol(x))
+    diag(Rnew) <- paste(diag(R), " ", sep="")
+    rownames(Rnew) <- colnames(x)
+    colnames(Rnew) <- paste(colnames(x), "", sep="")
+    
+    ## remove upper triangle of correlation matrix
+    if(removeTriangle[1]=="upper"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove lower triangle of correlation matrix
+    else if(removeTriangle[1]=="lower"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove last column and return the correlation matrix
+    Rnew <- cbind(Rnew[1:length(Rnew)-1])
+    if (result[1]=="none") return(Rnew)
+    else{
+      if(result[1]=="html") print(xtable(Rnew), type="html")
+      else print(xtable(Rnew), type="latex") 
+    }
+} 
+```
+```{r}
+corstars(df)
+```
+```{r}
+pc1_ptg <- lm(wave2_ptg ~ wave1_ptg + wave1_pts, data = data1)
+pc2_ptg <- lm(wave3_ptg ~ wave2_ptg + wave2_pts, data = data1)
+pc1_pts <- lm(wave2_pts ~ wave1_ptg + wave1_pts, data = data1)
+pc2_pts <- lm(wave3_pts ~ wave2_ptg + wave2_pts, data = data1)
+```
+```{r}
+summary(pc1_pts)
+```
+
+
+```{r}
+cortable <- corstars(df)
+```
+
+```{r}
+class(cortable)
+```
+```{r}
+write.table(cortable, file = '/Users/kaylisealgrim/Documents/cors.txt', sep = ",")
+```
+
+
+
+
+```{r}
+# specify model
+model <- '
+    # latent variables
+    i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
+    s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+
+    # regression on latent variables
+    wave3_ptg ~ i + s
+
+    # specify means and variances of latent variables (intercepts and slopes)
+    i ~~ 1*i
+    s ~~ 0*s
+    i ~~ 0*s
+'
+
+# fit model
+fit <- sem(model, data = data1)
+
+# get summary of model fit
+summary(fit, fit.measures=TRUE)
+
+```
+
+
+1. Latent growth curve
+
+```{r}
+# Specify the LGC model
+model <- '
+    # Latent variables
+    i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
+    s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg + 3*wave4_ptg
+'
+
+# Fit the LGC model
+fit <- growth(model, data = data1)
+
+# Summarize the results
+summary(fit, fit.measures =T)
+```
+2. Quadratix 
+
+q=~ *0, *1, *4, *9
+
+
+```{r}
+# Define the model for ETV
+qmodel <- '
+  # Latent intercept and slope
+  i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg 
+  s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg + 3*wave4_ptg 
+  q =~ 0*wave1_ptg + 1*wave2_ptg + 4*wave3_ptg + 9*wave4_ptg 
+'
+q_fit <- growth(qmodel, data = data1)
+summary(q_fit, fit.measures=T)
+```
+
+In this model: i represents the initial level (intercept) of PTG, and s represents the rate of change (slope) in PTG over time. The lines i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg and s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg specify the measurement part of the model. For the slope, the coefficients before each wave represent the time scores and determine the shape of the growth trajectory. In this case, a linear growth trajectory is specified. The lines i ~~ 1*i and s ~~ 1*s estimate the variances of the intercept. 
+```{r}
+# Define the model for PTS
+model_pts <- '
+  # Latent intercept and slope
+  i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
+  s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+  
+  # Regressions
+  i ~ wave1_pts
+  s ~ wave1_pts
+  
+  # Variances
+  i ~~ i
+  s ~~ s
+'
+
+fit_pts <- sem(model_pts, data = data2)
+summary(fit_pts)
+```
+
+```{r}
+summary(data1)
+```
+
+
+
+
+
+
+
+
+```{r}
+df_long <- data1 %>%
+  pivot_longer(
+    cols = -SUBJID,  # Exclude SUBJID from reshaping
+    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
+    names_pattern = "(wave\\d+)_(pts|ptg)"  # Use a regular expression to match old column names
+  )
+
+```
+```{r}
+df_long
+```
+```{r}
+class(dat)
+dim(dat) 
+names(dat) 
+str(dat) 
+glimpse(dat) 
+summary(dat) 
+```
+i. Example ri-clpm from Mulder & Hamaker
+```{r}
+dat <-read.table("RICLPM.dat",
+                 col.names = c(
+                   "x1", "x2", "x3", "x4", "x5",
+                   "y1", "y2", "y3", "y4", "y5"
+                 ))
+```
+
+```{r}
+RICLPM <- '
+# Create between components (random intercepts)
+  RIx =~ 1*x1 + 1*x2 + 1*x3 + 1*x4 + 1*x5
+  RIy =~ 1*y1 + 1*y2 + 1*y3 + 1*y4 + 1*y5
+  
+  # Create within-person centered variables
+  wx1 =~ 1*x1
+  wx2 =~ 1*x2
+  wx3 =~ 1*x3 
+  wx4 =~ 1*x4
+  wx5 =~ 1*x5
+  wy1 =~ 1*y1
+  wy2 =~ 1*y2
+  wy3 =~ 1*y3
+  wy4 =~ 1*y4
+  wy5 =~ 1*y5
+  
+    # Estimate lagged effects between within-person centered variables
+  wx2 + wy2 ~ wx1 + wy1
+  wx3 + wy3 ~ wx2 + wy2
+  wx4 + wy4 ~ wx3 + wy3
+  wx5 + wy5 ~ wx4 + wy4
+  
+   # Estimate covariance between within-person centered variables at first wave
+  wx1 ~~ wy1 # Covariance
+  
+  # Estimate covariances between residuals of within-person centered variables 
+  # (i.e., innovations)
+  wx2 ~~ wy2
+  wx3 ~~ wy3
+  wx4 ~~ wy4
+  wx5 ~~ wy5
+  
+  # Estimate variance and covariance of random intercepts
+  RIx ~~ RIx
+  RIy ~~ RIy
+  RIx ~~ RIy
+
+  # Estimate (residual) variance of within-person centered variables
+  wx1 ~~ wx1 # Variances
+  wy1 ~~ wy1 
+  wx2 ~~ wx2 # Residual variances
+  wy2 ~~ wy2 
+  wx3 ~~ wx3 
+  wy3 ~~ wy3 
+  wx4 ~~ wx4 
+  wy4 ~~ wy4 
+  wx5 ~~ wx5
+  wy5 ~~ wy5'
+RICLPM.fit <- lavaan(RICLPM,
+  data = dat, 
+  missing = "ML", 
+  meanstructure = T, 
+  int.ov.free = T
+)
+summary(RICLPM.fit, standardized = T)
+``'
+
+```{r}
+data2 <- data1[c('wave1_pts', 'wave2_pts', 'wave3_pts')]
+icc_result1 <- icc(data2, model = "oneway", type = "agreement", unit = "single")
+print(icc_result1)
+```
+```{r}
+data3 <- data1[c('wave1_ptg', 'wave2_ptg', 'wave3_ptg')]
+icc_result2 <- icc(data3, model = "oneway", type = "agreement", unit = "single")
+print(icc_result)
+```
+
+
+1. Random intercept cross-lagged panel model
+
+```{r}
+model1 <- '
+  # between components (random intercepts)
+  RIpts =~ 1*wave1_pts + 1*wave2_pts + 1*wave3_pts
+  RIptg =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
+  
+  # within person centered variables
+  wpts1 =~ 1*wave1_pts
+  wpts2 =~ 1*wave2_pts
+  wpts3 =~ 1*wave3_pts
+  wptg1 =~ 1*wave1_ptg
+  wptg2 =~ 1*wave2_ptg
+  wptg3 =~ 1*wave3_ptg
+
+   # Estimate lagged effects between within-person centered variables
+   wpts2 + wptg2 ~ wpts1 + wptg1
+   wpts3 + wptg3 ~ wpts2 + wptg2
+  
+  # Estimate covariance between within-person centered variables at first wave
+  wpts1 ~~ wptg1
+  
+    # Estimate covariances between residuals of within-person centered variables 
+  # (i.e., innovations)
+ wpts2 ~~ wptg2
+  wpts3 ~~ wptg3
+  
+  
+  #cross-lagged paths
+  wave2_pts ~ c21*wave1_ptg
+  wave3_pts ~ c21*wave2_ptg 
+  wave2_ptg ~ c12*wave1_pts
+  wave3_ptg ~ c12*wave2_pts
+  
+  # Estimate variance and covariance of random intercepts
+  RIpts ~~ RIptg
+
+ # Estimate (residual) variance of within-person centered variables
+  wpts1 ~~ wpts1 # Variances
+  wptg1 ~~ wptg1 
+  wpts2 ~~ wpts2 # Residual variances
+  wptg2 ~~ wptg2 
+  wpts3 ~~ wpts3 
+  wptg3 ~~ wptg3'
+
+ptg.fit <- lavaan(model1,
+  data = data1, 
+  missing = "ML", 
+  meanstructure = T, 
+  int.ov.free = T
+)
+summary(ptg.fit, standardized = T)
+
+```
+
+2. Latent growth curve
+```{r}
+data1
+```
+```{r}
+# Specify the model syntax
+model <- '
+  # Latent growth factors
+  PTG =~ wave1_pts + wave2_pts + wave3_pts
+  PTS =~ wave1_ptg + wave2_ptg + wave3_ptg
+  ETV =~ wave1_etv + wave2_pts + wave3_pts
+
+  # Regression paths
+  PTG ~ PTS
+  PTS ~ ETV
+
+  # Residual variances
+  wave1_ptg ~~ wave1_ptg
+  wave2_ptg ~~ wave2_ptg
+  wave3_ptg ~~ wave3_ptg
+  wave1_pts ~~ wave1_pts
+  wave2_pts ~~ wave2_pts
+  wave3_pts ~~ wave3_pts
+  wave1_etv ~~ wave1_etv
+  wave2_etv ~~ wave2_etv
+  wave3_etv ~~ wave3_etv
+'
+
+# Fit the model to the data
+fit <- lavaan(model, data = data1, missing = "FIML")
+
+# Print the model results
+summary(fit)
+```
+
+```{r}
+df_long <- data2 %>%
+  pivot_longer(
+    cols = -SUBJID,  # Exclude SUBJID from reshaping
+    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
+    names_pattern = "(wave\\d+)_(.*)"  # Use a regular expression to match old column names
+  )
+
+```
+```{r}
+df_long
+```
+
+
+
+
+3. Latent class mixture model
+
+```{r}
+data1
+```
+```{r}
+df_long <- data1 %>%
+  pivot_longer(
+    cols = -SUBJID,  # Exclude SUBJID from reshaping
+    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
+    names_pattern = "(wave\\d+)_(pts|ptg)"  # Use a regular expression to match old column names
+  )
+
+```
+```{r}
+df_numeric <- df_long
+# Remove the letters from the 'SUBJID' column + wave column
+df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
+df_numeric$wave <- as.numeric(gsub("[A-Za-z]", "", df_numeric$wave))
+df_numeric
+```
+
+```{r}
+class(data1)
+dim(df_numeric) 
+names(df_numeric) 
+str(data1) 
+glimpse(df_numeric) 
+summary(df_numeric) 
+```
+----
+```{r}
+mpts1 <- lcmm(pts ~ wave, random = ~ wave, subject = 'SUBJID', ng = 1, data = df_numeric)
+mpts2 <- lcmm(pts ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 2, data = df_numeric)
+mpts3 <- lcmm(pts ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 3, data = df_numeric)
+mpts4 <- lcmm(pts ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 4, data = df_numeric)
+mpts5 <- lcmm(pts ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 5, data = df_numeric)
+```
+```{r}
+mptg1 <- lcmm(ptg ~ wave, random = ~ wave, subject = 'SUBJID', ng = 1, data = df_numeric)
+mptg2 <- lcmm(ptg ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 2, data = df_numeric)
+mptg3 <- lcmm(ptg ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 3, data = df_numeric)
+mptg4 <- lcmm(ptg ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 4, data = df_numeric)
+mptg5 <- lcmm(ptg ~ wave, random = ~ wave, subject = 'SUBJID', mixture = ~ wave, ng = 5, data = df_numeric)
+```
+
+
+```{r}
+#comparing model fit for pts trajectories
+summary(mpts1)
+summary(mpts2)
+summary(mpts3)
+summary(mpts4)
+summary(mpts5)
+```
+```{r}
+#comparing model fit for ptg trajectories
+summary(mptg1)
+summary(mptg2)
+summary(mptg3)
+summary(mptg4)
+summary(mptg5)
+```
+
+Results: 
+
+There were slight differences in AIC and BIC when comparing post-traumatic stress trajectories. In post-traumatic growth, a two-class model showed the best fit for both AIC and BIC.
+
+```{r}
+model <- gbmt(x.names = c('pts', 'ptg'), unit = 'wave', time = 'wave', ng = 5, data = df_long)
+```
+
+
+```{r}
+ggplot(data = df_numeric, aes(x = pts, y = ptg, color = factor(wave))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "PTS", y = "PTG", color = "Wave") +
+  theme_minimal()
+
+```
+```{r}
+df <- data1 %>% select(c(2:7))
+```
+```{r}
+corstars(df)
+```
+```{r}
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                     result=c("none", "html", "latex")){
+    #Compute correlation matrix
+    require(Hmisc)
+    x <- as.matrix(x)
+    correlation_matrix<-rcorr(x, type=method[1])
+    R <- correlation_matrix$r # Matrix of correlation coeficients
+    p <- correlation_matrix$P # Matrix of p-value 
+    
+    ## Define notions for significance levels; spacing is important.
+    mystars <- ifelse(p < .0001, "****", ifelse(p < .001, "*** ", ifelse(p < .01, "**  ", ifelse(p < .05, "*   ", "    "))))
+    
+    ## trunctuate the correlation matrix to two decimal
+    R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1]
+    
+    ## build a new matrix that includes the correlations with their apropriate stars
+    Rnew <- matrix(paste(R, mystars, sep=""), ncol=ncol(x))
+    diag(Rnew) <- paste(diag(R), " ", sep="")
+    rownames(Rnew) <- colnames(x)
+    colnames(Rnew) <- paste(colnames(x), "", sep="")
+    
+    ## remove upper triangle of correlation matrix
+    if(removeTriangle[1]=="upper"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove lower triangle of correlation matrix
+    else if(removeTriangle[1]=="lower"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove last column and return the correlation matrix
+    Rnew <- cbind(Rnew[1:length(Rnew)-1])
+    if (result[1]=="none") return(Rnew)
+    else{
+      if(result[1]=="html") print(xtable(Rnew), type="html")
+      else print(xtable(Rnew), type="latex") 
+    }
+} 
+```
+```{r}
+pc1 <- lm(wave2_pts ~ wave1_pts + wave1_ptg, data = data1)
+pc2 <- lm(wave2_ptg ~ wave1_pts + wave1_ptg, data = data1)
+pc3 <- lm(wave3_pts ~ wave2_pts + wave2_ptg, data = data1)
+pc4 <- lm(wave3_ptg ~ wave2_pts + wave2_ptg, data = data1)
+```
+```{r}
+summary(pc1)
+summary(pc2)
+summary(pc3)
+summary(pc4)
+```
+
+
+
+
+
+
+
+
