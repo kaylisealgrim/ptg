@@ -47,9 +47,16 @@ summary(ifit, fit.measures=T)
 
 ```
 
+```{r}
+m1a <- "Intercept =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg"
+m1a_fit <- growth(m1a, data=data1)
+summary(m1a_fit, fit.measures=T)
+```
+
+
 ##Model 1 = Intercept Only, variance controlled at 0
 ```{r}
-m1 <- '
+m1b <- '
 i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
 i ~~ 0*i
 wave1_ptg ~~ r*wave1_ptg 
@@ -57,10 +64,10 @@ wave2_ptg ~~ r*wave2_ptg
 wave3_ptg ~~ r*wave3_ptg
 wave4_ptg ~~ r*wave4_ptg
 '
-m1_fit <- growth(m1, data = data1)
-summary(m1_fit)
-parameterestimates(m1_fit, standardized = TRUE)
-fitmeasures(m1_fit)
+m1b_fit <- growth(m1b, data = data1)
+summary(m1b_fit)
+parameterestimates(m1b_fit, standardized = TRUE)
+fitmeasures(m1b_fit)
 ```
 
 Model 2 = Intercept only, variance > 0, random intercept model (models that individuals will have different intercepts)
@@ -95,14 +102,15 @@ summary(m3a_fit, fit.measures=T)
 Model 3 = Random slope
 ```{r}
 m3b <- '
-i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
-s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
+s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg + 3*wave4_ptg
 s ~ 0*1
 s ~~ 0*i
 wave1_ptg ~~ r*wave1_ptg 
 wave2_ptg ~~ r*wave2_ptg 
 wave3_ptg ~~ r*wave3_ptg
-'
+wave4_ptg ~~ r*wave4_ptg
+
 m3b_fit <- growth(m3b, data = data1)
 summary(m3b_fit)
 parameterestimates(m3b_fit, standardized = TRUE)
@@ -111,22 +119,23 @@ fitmeasures(m3b_fit)
 Model 4 = Allow slope to vary
 ```{r}
 m4 <- '
-i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
-s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
+s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg + 3*wave4_ptg
 wave1_ptg ~~ r*wave1_ptg 
 wave2_ptg ~~ r*wave2_ptg 
 wave3_ptg ~~ r*wave3_ptg
+wave4_ptg ~~ r*wave4_ptg
 '
 m4_fit <- growth(m4, data = data1)
 summary(m4_fit)
 parameterestimates(m4_fit, standardized = TRUE)
 fitmeasures(m4_fit)
 ```
-Model 5 = Allow residuals to vary
+Model 5 = Allow residuals to vary 
 ```{r}
 m5 <- '
-i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg
-s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg
+i =~ 1*wave1_ptg + 1*wave2_ptg + 1*wave3_ptg + 1*wave4_ptg
+s =~ 0*wave1_ptg + 1*wave2_ptg + 2*wave3_ptg + 3*wave4_ptg
 '
 m5_fit <- growth(m5, data = data1)
 summary(m5_fit)
