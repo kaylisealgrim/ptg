@@ -1,0 +1,1053 @@
+---
+title: "4 Wave PTG Latent Growth Curves and Latent Class Mixture Models"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+---
+Summary: We first (1) tested the latent growth curve model for the entire dataset. We then (2) assessed 1 - 6 latent classes for the model, testing both quadratic and linear models. The best fit was the single trajectory model, but the three trajectory model was very close. As the models were comparable, the linear model with fewer parameters was selected over the quadratic model. (4) Using these models as outcomes, we predicted group membership from time 1 exposure to violence and time 1 post-traumatic stress using multinomial logistic regression.
+
+#dataframe names
+data - complete dataset
+data1 - variables of interest for all waves
+data2 - variables of interest with wave 1 predictors
+df_long - variables of interest in long format
+df_clean - long format dataset with NAs removed and high - low categories created for post-traumatic growth
+df_pred - pts and etv at time 1
+df_numeric - df_clean with SUBJID in numeric form to analyze
+
+#loaded packages
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(lavaan)
+library(lcmm)
+library(lme4)
+library(chisq.posthoc.test)
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                     result=c("none", "html", "latex")){
+    #Compute correlation matrix
+    require(Hmisc)
+    x <- as.matrix(x)
+    correlation_matrix<-rcorr(x, type=method[1])
+    R <- correlation_matrix$r # Matrix of correlation coeficients
+    p <- correlation_matrix$P # Matrix of p-value 
+    
+    ## Define notions for significance levels; spacing is important.
+    mystars <- ifelse(p < .0001, "****", ifelse(p < .001, "*** ", ifelse(p < .01, "**  ", ifelse(p < .05, "*   ", "    "))))
+    
+    ## trunctuate the correlation matrix to two decimal
+    R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1]
+    
+    ## build a new matrix that includes the correlations with their apropriate stars
+    Rnew <- matrix(paste(R, mystars, sep=""), ncol=ncol(x))
+    diag(Rnew) <- paste(diag(R), " ", sep="")
+    rownames(Rnew) <- colnames(x)
+    colnames(Rnew) <- paste(colnames(x), "", sep="")
+    
+    ## remove upper triangle of correlation matrix
+    if(removeTriangle[1]=="upper"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove lower triangle of correlation matrix
+    else if(removeTriangle[1]=="lower"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove last column and return the correlation matrix
+    Rnew <- cbind(Rnew[1:length(Rnew)-1])
+    if (result[1]=="none") return(Rnew)
+    else{
+      if(result[1]=="html") print(xtable(Rnew), type="html")
+      else print(xtable(Rnew), type="latex") 
+    }
+} 
+```
+
+#all initial dataframes and recoding
+```{r}
+data <- read.csv("ptg_data.csv")
+data <- data %>% 
+  mutate(wave4_pts = rowMeans(select(.,ss4.pts01,ss4.pts02,ss4.pts03,ss4.pts04,ss4.pts05,ss4.pts06,ss4.pts07,ss4.pts08,ss4.pts09)))
+data <- data %>% 
+  mutate(wave4_ptg = rowMeans(select(.,ss4.ptg01,ss4.ptg02,ss4.ptg03,ss4.ptg04,ss4.ptg05,ss4.ptg06,ss4.ptg07,ss4.ptg08,ss4.ptg09,ss4.ptg10)))
+data <- data %>% 
+  mutate(wave4_etv = rowMeans(select(.,ss4.NVL01,ss4.NVL02,ss4.NVL03,ss4.NVL04,ss4.NVL05,ss4.NVL06,ss4.NVL07,ss4.NVL08,ss4.NVL09,ss4.NVL10,ss4.NVL11,
+                                     ss4.NVL12,ss4.NVL13,ss4.NVL14,ss4.NVL15,ss4.NVL16,ss4.NVL17,ss4.NVL18,ss4.NVL19,ss4.NVL20)))
+data <- data %>% 
+  mutate(wave1_gun = rowMeans(select(.,ss1.NVL01,ss1.NVL03,ss1.NVL07,ss1.NVL08,ss1.NVL14,ss1.NVL15)))
+data <- data %>% 
+  mutate(wave2_gun = rowMeans(select(.,ss2.NVL01,ss2.NVL03,ss2.NVL07,ss2.NVL08,ss2.NVL14,ss2.NVL15)))
+data <- data %>% 
+  mutate(wave3_gun = rowMeans(select(.,ss3.NVL01,ss3.NVL03,ss3.NVL07,ss3.NVL08,ss3.NVL14,ss3.NVL15)))
+data1 <- data %>% select(c('SUBJID','ss1.Age','ss1.Sex','ss1.Race','ss2.Age','ss2.Sex','ss2.Race','ss3.Age','ss3.Sex','ss3.Race','wave1_ptg','wave2_ptg','wave3_ptg','wave1_pts','wave2_pts','wave3_pts','wave1_etv','wave2_etv','wave3_etv','wave4_pts','wave4_etv','wave4_ptg','ss4.Age','ss4.Sex','ss4.Race'))
+##getting natural log for relevant variables
+
+
+data1 <- data1 %>%
+  mutate(across(matches("^wave\\d+_ptg$"), list(logptg = ~log(.))))
+
+data1 <- data1 %>%
+rename(wave1_logptg = wave1_ptg_logptg)
+data1 <- data1 %>%
+rename(wave2_logptg = wave2_ptg_logptg)
+data1 <- data1 %>%
+rename(wave3_logptg = wave3_ptg_logptg)
+data1 <- data1 %>%
+rename(wave4_logptg = wave4_ptg_logptg)
+
+data2 <- data %>% select(c('SUBJID','ss1.Age','ss1.Sex','ss1.Race','wave1_ptg','wave2_ptg','wave3_ptg','wave1_pts','wave1_etv','wave1_gun'))
+data1$ss1.Race <- factor(data1$ss1.Race,
+                         levels = c(1,2,3,4,5,6),
+                         labels = c("Black", "Hispanic", "Asian","White","Mixed","Other"))
+data1$ss2.Race <- factor(data1$ss2.Race,
+                         levels = c(1,2,3,4,5,6),
+                         labels = c("Black", "Hispanic", "Asian","White","Mixed","Other"))
+data1$ss3.Race <- factor(data1$ss3.Race,
+                         levels = c(1,2,3,4,5,6),
+                         labels = c("Black", "Hispanic", "Asian","White","Mixed","Other"))
+data1$ss4.Race <- factor(data1$ss4.Race,
+                         levels = c(1,2,3,4,5,6),
+                         labels = c("Black", "Hispanic", "Asian","White","Mixed","Other"))
+data1 <- data1 %>% mutate(ss1.Sex=recode(ss1.Sex,'1'='1','2'='0'))
+data1 <- data1 %>% mutate(ss1.Age=as.numeric(ss1.Age), na.rm = TRUE)
+data1 <- data1 %>% mutate(ss2.Age=as.numeric(ss2.Age), na.rm = TRUE)
+data1 <- data1 %>% mutate(ss3.Age=as.numeric(ss3.Age), na.rm = TRUE)
+data1 <- data1 %>% mutate(Gender=as.numeric(ss1.Sex), na.rm = TRUE)
+data1 <- data1 %>%
+  mutate(category = ifelse(is.na(ss4.Sex), "No Data", "Has Data"))
+# Relevel the factor to make '4' the reference category
+data1$ss1.Race <- relevel(factor(data1$ss1.Race), ref = 'White')
+mat <- model.matrix(~ ss1.Race - 1, data = data1)
+df_dummies <- as.data.frame(mat)
+data1 <- cbind(data1, df_dummies)
+df_long <- data1 %>%
+  pivot_longer(
+    cols = -c(SUBJID, `ss1.Age`, `Gender`, `ss1.Race`,`category`,`ss1.RaceWhite`,`ss1.RaceBlack`,`ss1.RaceHispanic`,
+              `ss1.RaceAsian`,`ss1.RaceMixed`,`ss1.RaceOther`), # Exclude SUBJID from reshaping
+    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
+    names_pattern = "(wave\\d+)_(ptg|pts|etv|logptg)"  # Use a regular expression to match old column names
+  )
+df_clean <- na.omit(df_long)
+df_numeric <- df_clean
+# Remove the letters from the 'SUBJID' column + wave column
+df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
+df_pred <- df_clean %>%
+  filter(wave== "wave1") %>% 
+  select(SUBJID, wave, pts, etv) %>% 
+  rename(pts1 = pts, etv1 = etv)
+df_pred$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_pred$SUBJID))
+df_var <- data1 %>% 
+  select("wave1_ptg","wave2_ptg","wave3_ptg","wave4_ptg","wave1_pts","wave2_pts","wave3_pts","wave4_pts","wave1_etv","wave2_etv","wave3_etv","wave4_etv")
+df_numeric <- df_numeric %>%
+  group_by(SUBJID) %>%
+  mutate(etv1 = first(etv), pts1 = first(pts), ptg1 = first(ptg)) %>%
+  ungroup()
+df_numeric <- df_numeric %>%
+  group_by(SUBJID) %>%
+  mutate(pts3 = last(pts)) %>%
+  ungroup()
+```
+
+#inspecting the data
+```{r}
+class(data1)
+dim(data1) 
+names(data1) 
+str(data1) 
+glimpse(data1) 
+summary(data1)
+```
+
+#bivariate correlations
+```{r}
+correlations <- corstars(df_var)
+```
+
+#variable distributions
+```{r}
+ggplot(data,aes(x=wave1_ptg)) +   geom_histogram(fill = ("#a3c1ad"), binwidth = .4) + theme_minimal()
+ggplot(data,aes(x=wave2_ptg)) +   geom_histogram(fill = ("#a3c1ad"), binwidth = .4) + theme_minimal()
+ggplot(data,aes(x=wave3_ptg)) +   geom_histogram(fill = ("#a3c1ad"), binwidth = .4) + theme_minimal()
+ggplot(data,aes(x=wave4_ptg)) +   geom_histogram(fill = ("#a3c1ad"), binwidth = .4) + theme_minimal()
+ggplot(data,aes(x=wave1_pts)) +   geom_histogram(fill = ("#e0ac69"), binwidth = .2) + theme_minimal()
+ggplot(data,aes(x=wave1_etv)) +   geom_histogram(fill = ("#e76a6a"), binwidth = .2) + theme_minimal()
+```
+#ptg trajectories for all participants by wave
+```{r}
+ggplot(df_clean, aes(x = wave, y = ptg, group = SUBJID, color = factor(SUBJID))) +
+  geom_line() +
+  labs(x = "Wave", y = "PTG", color = "Participant ID") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+#descriptives and reliability
+##race
+```{r}
+ggplot(data1, aes(x = ss1.Race)) +
+  geom_bar(fill = "pink", color = "black") +
+  labs(x = "Race", y = "Count") +
+  theme_minimal()
+data1 %>%
+  group_by(ss1.Race) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+data1 %>%
+  filter(!is.na(ss2.Race)) %>%
+  group_by(ss2.Race) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+data1 %>%
+  filter(!is.na(ss3.Race)) %>%
+  group_by(ss3.Race) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+data1 %>%
+  filter(!is.na(ss4.Race)) %>%
+  group_by(ss4.Race) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+```
+##age
+```{r}
+table(data1$ss1.Age)
+table(data1$ss2.Age)
+table(data1$ss3.Age)
+table(data1$ss4.Age)
+
+data1 %>% 
+  summarise(mean = mean(ss1.Age, na.rm = TRUE), sd = sd(ss1.Age, na.rm = TRUE))
+data1 %>% 
+  summarise(mean = mean(ss2.Age, na.rm = TRUE), sd = sd(ss2.Age, na.rm = TRUE))
+data1 %>% 
+  summarise(mean = mean(ss3.Age, na.rm = TRUE), sd = sd(ss3.Age, na.rm = TRUE))
+data1 %>% 
+  summarise(mean = mean(ss4.Age, na.rm = TRUE), sd = sd(ss4.Age, na.rm = TRUE))
+```
+
+```{r}
+tab_cluster_gender <- table(df_numeric$clust2, df_numeric$Gender)
+tab_cluster_race <- table(df_numeric$clust2, df_numeric$ss1.Race)
+tab_cluster_age <- table(df_numeric$clust2, df_numeric$ss1.Age)
+```
+```{r}
+chisq.test(tab_cluster_gender)
+chisq.test(tab_cluster_race) 
+chisq.test(tab_cluster_age) 
+t.test(pts1 ~ clust2, data = df_numeric)
+t.test(etv1 ~ clust2, data = df_numeric)
+```
+
+
+
+
+#lost toys
+```{r}
+missing <- df_numeric %>% filter(wave == "wave1") %>% 
+  select(category, pts1, ptg1,etv1,Gender,ss1.Race,ss1.Age) 
+tab_category_gender <- table(missing$category, missing$Gender)
+tab_category_race <- table(missing$category, missing$ss1.Race)
+tab_category_age <- table(missing$category, missing$ss1.Age)
+chisq.test(tab_category_gender) 
+chisq.test(tab_category_race)
+t.test(pts1 ~ category, data = missing)
+t.test(etv1 ~ category, data = missing)
+t.test(ptg1 ~ category, data = missing)
+```
+```{r}
+# Create a contingency table
+table_data <- with(data1, table(ss1.Race, category))
+
+# Perform the chi-squared test
+test_result <- chisq.test(table_data)
+
+# Print the test result
+print(test_result)
+
+```
+```{r}
+table2 <- table(df_numeric$category, df_numeric$clust2)
+chisq.test(table2)
+```
+
+```{r}
+t.test(wave1_etv ~ category, data = data1)
+```
+
+
+```{r}
+ptg_wave1 <- data1 %>% select(contains("ss1.ptg"))
+pts_wave1 <- data1 %>% select(contains("ss1.pts"))
+alpha(pts_wave1)
+```
+
+
+
+
+
+```{r}
+pts_race <- aov(wave1_pts ~ ss1.Race, data = data1)
+summary(pts_race)
+```
+```{r}
+ptg_race <- aov(wave1_ptg ~ ss1.Race, data = data1)
+summary(ptg_race)
+```
+
+```{r}
+etv_race <- aov(wave1_etv ~ ss1.Race, data = data1)
+summary(etv_race)
+```
+```{r}
+pts_gender <- t.test(wave1_pts ~ Gender, data = data1)
+summary(pts_gender)
+```
+```{r}
+ptg_gender <- t.test(wave1_ptg ~ Gender, data = data1)
+summary(ptg_gender)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+ggplot(df_long, aes(x = wave, y = ptg, fill = wave)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("blue", "red", "yellow"))
+```
+
+
+
+
+
+
+```{r}
+data %>%
+  filter(!is.na(ss3.Sex)) %>%
+  group_by(ss3.Sex) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+```
+```{r}
+data %>%
+  filter(!is.na(ss4.Sex)) %>%
+  group_by(ss4.Sex) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+```
+```{r}
+data %>%
+  filter(!is.na(ss2.Sex)) %>%
+  group_by(ss2.Sex) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+```
+
+
+
+
+
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(ptg), sd = sd(ptg))
+```
+
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(etv), sd = sd(etv))
+```
+
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(pts), sd = sd(pts))
+```
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(gun), sd = sd(gun))
+```
+
+Latent Class Mixture Model
+```{r}
+m1 <- lcmm::hlme(ptg ~ wave, random = ~wave, subject = "SUBJID", ng = 1, data = df_numeric)
+m2 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 2, data = df_numeric, B=m1)
+m3 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 3, data = df_numeric, B=m1)
+m4 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 4, data = df_numeric, B=m1)
+m5 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 5, data = df_numeric, B=m1)
+m6 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 6, data = df_numeric, B=m1)
+# Model with no latent classes (for reference)
+mq1 <- lcmm::hlme(ptg ~ wave + I(wave**2), random = ~wave, subject = "SUBJID", ng = 1, data = df_numeric)
+
+# Models with 2 to 6 latent classes
+mq2 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 2, data = df_numeric, B=mq1)
+mq3 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 3, data = df_numeric, B=mq1)
+mq4 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 4, data = df_numeric, B=mq1)
+mq5 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 5, data = df_numeric, B=mq1)
+mq6 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 6, data = df_numeric, B=mq1)
+```
+
+
+
+```{r}
+b <- ggplot(df_numeric, aes(x=wave, y=ptg, group=SUBJID, color=SUBJID)) + 
+  geom_line() +
+  geom_point() 
+
+print(b)
+```
+
+
+```{r}
+summary(m2)
+```
+```{r}
+summary(m6)
+```
+
+
+```{r}
+pp_m2 <- postprob(m2)
+head(pp_m2)
+```
+```{r}
+postprob(m3)
+```
+
+
+## The best fitting model appears to be a quadratic model with a single wave, but that's not necessarily what makes sense with our other intuitions and knowledge of this phenomenon. The second best fitting model is the linear 3 class, closely followed by the quadratic three class.
+Model Selection
+```{r}
+#summary table for model comparison
+tab1 <- as.data.frame(lcmm::summarytable(m1, m2, m3, m4, m5, m6))
+tab2 <- as.data.frame(lcmm::summarytable(mq1, mq2, mq3, mq4, mq5, mq6))
+tab3 <- as.data.frame(lcmm::summarytable(m1, m2, m3, m4, m5, m6, mq1, mq2, mq3, mq4, mq5, mq6))
+
+```
+```{r}
+summary(m3)
+```
+```{r}
+summary(mq3)
+```
+
+
+
+```{r}
+summary(m6)
+```
+
+```{r}
+ggplot(tab2, aes(x=G, y=BIC)) +
+  geom_point(size = 3, shape=21) + 
+  geom_line(size = .3) +
+  scale_y_continuous(limits = c(2100,2390)) +
+  scale_x_continuous(breaks = c(1:6)) +
+  xlab("Number of clusters") +
+  theme_classic()
+```
+
+Predictors
+
+```{r}
+#Final models
+m2etv_1 <- lcmm::hlme(ptg ~ wave + etv1, mixture = ~wave + etv1, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 2, data = df_numeric)
+m2pts_1 <- lcmm::hlme(ptg ~ wave + pts1, mixture = ~wave + pts1, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
+m2etv_full <- lcmm::hlme(ptg ~ wave + etv1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + etv1 + ss1.RaceBlack + ss1.RaceHispanic + 
+                           ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 2, data = df_numeric)
+m2pts_full <- lcmm::hlme(ptg ~ wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
+m2race_full <- lcmm::hlme(ptg ~ wave + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', ng = 2, data = df_numeric)
+```
+```{r}
+chisq.posthoc.test(conting_race)
+```
+
+
+```{r}
+summary(m2)
+summary(m2etv_1)
+summary(m2pts_1)
+summary(m2pts_full)
+summary(m2etv_full)
+summary(m2race_full)
+```
+```{r}
+m2gender <- lcmm::hlme(
+  fixed = ptg ~ wave + Gender,  # Include ss1.Sex in fixed effects
+  mixture = ~ wave + Gender,    # Include ss1.Sex in mixture (latent classes)
+  random = ~ wave,                     # Random intercept and slope by wave
+  subject = 'SUBJID',                  # Subject ID to specify the clustering of observations
+  classmb = ~ Gender,           # Include gun and ss1.Sex for class membership
+  ng = 2,                              # Number of latent classes
+  data = df_numeric                    # Data frame
+)
+
+```
+```{r}
+m2age <- lcmm::hlme(
+  fixed = ptg ~ wave + ss1.Age,  # Include ss1.Sex in fixed effects
+  mixture = ~ wave + ss1.Age,    # Include ss1.Sex in mixture (latent classes)
+  random = ~ wave,                     # Random intercept and slope by wave
+  subject = 'SUBJID',                  # Subject ID to specify the clustering of observations
+  classmb = ~ ss1.Age,           # Include gun and ss1.Sex for class membership
+  ng = 2,                              # Number of latent classes
+  data = df_numeric                    # Data frame
+)
+
+```
+```{r}
+m2race <- lcmm::hlme(
+  fixed = ptg ~ wave + ss1.Race,  # Include ss1.Sex in fixed effects
+  mixture = ~ wave + ss1.Race,    # Include ss1.Sex in mixture (latent classes)
+  random = ~ wave,                     # Random intercept and slope by wave
+  subject = 'SUBJID',                  # Subject ID to specify the clustering of observations
+  classmb = ~ ss1.Race,           # Include gun and ss1.Sex for class membership
+  ng = 2,                              # Number of latent classes
+  data = df_numeric                    # Data frame
+)
+
+```
+
+```{r}
+summary(m2gender)
+```
+```{r}
+summary(m2race)
+```
+
+```{r}
+summary(m2age)
+```
+
+
+```{r}
+summary(m2etv)
+summary(m3etv)
+```
+```{r}
+summary(m3pts)
+summary(m2pts)
+```
+```{r}
+summary(m3gun)
+summary(m2gun)
+```
+
+
+Predictors Wave 1
+
+```{r}
+m2etv_1 <- lcmm::hlme(ptg ~ wave + etv1, mixture = ~wave + etv1, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 2, data = df_numeric)
+m3etv_1 <- lcmm::hlme(ptg ~ wave + etv1, mixture = ~wave + etv1, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 3, data = df_numeric)
+m2pts_1 <- lcmm::hlme(ptg ~ wave + pts1, mixture = ~wave + pts1, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
+m3pts_1 <- lcmm::hlme(ptg ~ wave + pts1, mixture = ~wave + pts1, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 3, data = df_numeric)
+m2gun_1 <- lcmm::hlme(ptg ~ wave + gun1, mixture = ~wave + gun1, random = ~wave, subject='SUBJID', classmb = ~ gun, ng = 2, data = df_numeric)
+m3gun_1 <- lcmm::hlme(ptg ~ wave + gun1, mixture = ~wave + gun1, random = ~wave, subject='SUBJID', classmb = ~ gun, ng = 3, data = df_numeric)
+```
+
+Other Models
+
+```{r}
+simple_model <- lcmm::hlme(fixed = ptg ~ wave + pts1,
+                           mixture = ~pts1,
+                           random = ~wave,
+                           subject = "SUBJID",
+                           ng = 2, 
+                           data = df_numeric)
+
+```
+```{r}
+simple_model1 <- lcmm::hlme(fixed = ptg ~ wave + etv1,
+                           mixture = ~etv1,
+                           random = ~wave,
+                           subject = "SUBJID",
+                           ng = 2, 
+                           data = df_numeric)
+
+```
+```{r}
+simple_model2 <- lcmm::hlme(fixed = ptg ~ wave + gun1,
+                           mixture = ~gun1,
+                           random = ~wave,
+                           subject = "SUBJID",
+                           ng = 2, 
+                           data = df_numeric)
+
+```
+```{r}
+summary(simple_model2)
+```
+```{r}
+summary(m2)
+```
+
+
+```{r}
+summary(m2etv_1)
+```
+
+
+
+```{r}
+summary(m3pts_1)
+summary(m2pts_1)
+```
+```{r}
+summary(m3gun_1)
+summary(m2gun_1)
+```
+
+
+```{r}
+view(df_numeric)
+```
+
+```{r}
+df_numeric %>% filter(wave == "wave3")
+```
+
+
+
+```{r}
+data1 %>% 
+  summarise(mean1 = mean(wave1_etv), mean2 = mean(wave2_etv, na.rm = TRUE), mean3 = mean(wave3_etv, na.rm = TRUE))
+```
+```{r}
+data1 %>% 
+  summarise(mean1 = mean(wave1_gun), mean2 = mean(wave2_gun, na.rm = TRUE), mean3 = mean(wave3_gun, na.rm = TRUE))
+```
+
+```{r}
+d <- aov(etv ~ wave, data = df_numeric)
+```
+```{r}
+summary(d)
+```
+
+```{r}
+e <- aov(gun ~ wave, data = df_numeric)
+```
+```{r}
+summary(e)
+```
+```{r}
+data1 %>% 
+  summarise(mean1 = mean(wave1_pts), mean2 = mean(wave2_pts, na.rm = TRUE), mean3 = mean(wave3_pts, na.rm = TRUE))
+```
+
+```{r}
+f <- aov(pts ~ wave, data = df_numeric)
+```
+```{r}
+summary(f)
+```
+
+
+```{r}
+summary(m3)
+```
+```{r}
+summary(m2)
+```
+
+
+```{r}
+table(m3$pprob[,2])
+```
+```{r}
+table(m2$pprob[,2])
+```
+```{r}
+table(mq3$pprob[,2])
+```
+```{r}
+table(mq2$pprob[,2])
+```
+INTRODUCE CLUSTERS BELOW
+
+```{r}
+df_numeric <- merge(df_numeric, round(m3$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$clust3 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+df_numeric <- merge(df_numeric, round(m2$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$clust2 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+df_numeric <- merge(df_numeric, round(mq3$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$clustq3 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+df_numeric <- merge(df_numeric, round(mq2$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$clustq2 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+```
+
+```{r}
+summary(m1)
+```
+
+```{r}
+
+```
+
+```{r}
+conting_gender <- table(df_numeric$Gender, df_numeric$clust2)
+conting_race <- table(df_numeric$ss1.Race, df_numeric$clust2)
+conting_age <- table(df_numeric$ss1.Age, df_numeric$clust2)
+chisq.test(conting_gender)
+chisq.test(conting_race)
+chisq.test(conting_age)
+```
+
+Post-traumatic stress is significantly higher for those in Group 2
+
+```{r}
+conting_race
+```
+
+
+```{r}
+t.test(pts3 ~ clust2, data = df_numeric)
+```
+
+```{r}
+t.test(pts1 ~ clust2, data = df_numeric)
+```
+```{r}
+t.test(etv1 ~ clust2, data = df_numeric)
+```
+Post-traumatic stress at time 3 was also higher for the high increasing post-traumatic growth group
+
+Cluster membership does not significantly differ by gender, age,  or race.
+
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = etvclust2, group = SUBJID)) +
+  geom_point(size = .1) + geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = etvclust2)) +
+  scale_color_manual(values=c( "red","green"))
+```
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = ptsclust2, group = SUBJID)) +
+  geom_point(size = .1) + geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = ptsclust2)) +
+  scale_color_manual(values=c( "red","green"))
+```
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = clust2, group = SUBJID)) +
+  geom_point(size = .1) + geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust2)) +
+  scale_color_manual(values=c( "red","green"))
+```
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = clust3, group = SUBJID)) +
+  geom_point(size = .1) + geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
+  scale_color_manual(values=c( "red","green","blue"))
+```
+
+```{r}
+df_numeric$clust2
+```
+
+Cleaned table
+```{r}
+library(ggplot2)
+
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = clust2, group = SUBJID)) +
+  geom_point(size = .1) +
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust2)) +
+  scale_color_manual(values=c("red","green"), 
+                     name = "Class", 
+                     breaks = c("1", "2"), 
+                     labels = c("Low-Decreasing", "High-Increasing")) +
+  labs(
+    title = "Two Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+```
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, linetype = clustq3, group = SUBJID)) +
+  geom_point(size = .1) +
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust2)) +
+  scale_linetype_manual(values=c("solid","dashed"), 
+                        name = "Class", 
+                        breaks = c("1", "2"), 
+                        labels = c("Low-Decreasing", "High-Increasing")) +
+  labs(
+    title = "Two Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+ggplot(df_numeric, aes(x=wave, y=ptg, linetype = clustq3, group = SUBJID)) +
+  geom_point(linewidth = .1) + 
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
+  scale_color_manual(values=c( "red","green","blue"))
+
+ggplot(df_numeric, aes(x=wave, y=ptg, linetype = clust3, group = SUBJID)) +
+  geom_point(size = .1) + 
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clustq3)) +
+  scale_color_manual(values=c( "red","green","blue"))
+```
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, linetype = clust2, group = SUBJID)) +
+  geom_point(size = .1) +
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust2)) +
+  scale_linetype_manual(values=c("solid","dashed"), 
+                        name = "Class", 
+                        breaks = c("1", "2"), 
+                        labels = c("Low-Decreasing", "High-Increasing")) +
+  labs(
+    title = "Two Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = etvclust2, group = SUBJID)) +
+  geom_point(size = .1) +
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = etvclust2)) +
+  scale_color_manual(values=c("red","green"), 
+                     name = "Class", 
+                     breaks = c("1", "2"), 
+                     labels = c("Low-Decreasing", "High-Increasing")) +
+  labs(
+    title = "Two Class Model for Post-Traumatic Growth Trajectories with ETV Covariate",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(df_numeric, aes(x=wave, y=ptg, colour = ptsclust2, group = SUBJID)) +
+  geom_point(size = .1) +
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = ptsclust2)) +
+  scale_color_manual(values=c("red","green"), 
+                     name = "Class", 
+                     breaks = c("1", "2"), 
+                     labels = c("Low-Decreasing", "High-Increasing")) +
+  labs(
+    title = "Two Class Model for Post-Traumatic Growth Trajectories with PTS Covariate",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+```
+
+```{r}
+summary(m2)
+```
+
+
+Age and Gender Differences
+
+```{r}
+t.test(ptg ~ Gender, data = df_numeric)
+```
+```{r}
+unique(df_numeric$Gender)
+```
+
+
+Models
+```{r}
+#intercept only model
+baseline_w1 <- lmer(ptg ~ 1 + (1 | SUBJID), data = df_merged, REML = FALSE)
+```
+```{r}
+fixed_pts_wave1 <- lmer(ptg ~ 1 + pts + (1 | SUBJID), data = df_merged, REML = FALSE)
+```
+```{r}
+#random fixed pts effect
+ranfixed_pts_wave1 <- lmer(ptg ~ 1 + pts + (1 + pts | SUBJID), data = df_merged, REML = FALSE)
+#getting result boundary (singular) fit: see ?isSingular
+```
+```{r}
+#fixed etv effect
+fixed_etv_wave1 <- lmer(ptg ~ 1 + etv + (1 | SUBJID), data = df_merged, REML = FALSE)
+```
+```{r}
+#random fixed etv effect
+ranfixed_etv_wave1 <- lmer(ptg ~ 1 + etv + (1 + etv | SUBJID), data = df_merged, REML = FALSE)
+```
+
+```{r}
+etv_mod_c <- anova(baseline_w1, ranfixed_etv_wave1, fixed_etv_wave1)
+```
+```{r}
+print(etv_mod_c)
+```
+```{r}
+pts_mod_c <- anova(baseline_w1, ranfixed_pts_wave1, fixed_pts_wave1)
+```
+```{r}
+print(pts_mod_c)
+```
+
+
+```{r}
+summary(baseline_w1)
+```
+
+```{r}
+summary(fixed_pts_wave1)
+```
+With PTS at 0, the average PTG is 2.55. Every time PTS goes up by a point, the average PTG score rises by .38. The standard deviation for the residual dropped a very small amount.
+
+```{r}
+summary(ranfixed_pts_wave1)
+```
+```{r}
+summary(fixed_etv_wave1)
+```
+
+```{r}
+summary(ranfixed_etv_wave1)
+```
+```{r}
+#intercept only model
+baseline <- lmer(ptg ~ 1 + (1 | SUBJID), data = df_clean)
+```
+```{r}
+#fixed pts effect
+fixed_pts <- lmer(ptg ~ 1 + pts + (1 | SUBJID), data = df_clean)
+```
+```{r}
+#random fixed pts effect
+ranfixed_pts <- lmer(ptg ~ 1 + pts + (1 + pts | SUBJID), data = df_clean)
+```
+
+```{r}
+#fixed etv effect
+fixed_etv <- lmer(ptg ~ 1 + etv + (1 | SUBJID), data = df_clean)
+```
+```{r}
+#random fixed etv effect
+ranfixed_etv <- lmer(ptg ~ 1 + etv + (1 + etv | SUBJID), data = df_clean)
+```
+
+OKAY! The random and fixed effects model for PTS and ETV offers the best fit. 
+
+```{r}
+summary(baseline)
+```
+The mean PTG is 3.44.
+```{r}
+summary(fixed_pts)
+```
+With PTS at 0, the average PTG is 2.55. Every time PTS goes up by a point, the average PTG score rises by .38. The standard deviation for the residual dropped a very small amount.
+
+```{r}
+summary(ranfixed_pts)
+```
+```{r}
+summary(fixed_etv)
+```
+
+```{r}
+summary(ranfixed_etv)
+```
+For ETV, a fixed effect model appears worse than baseline, but a linear mixed effect model with random effects improves on the model.
+
+```{r}
+summary(baseline)
+```
+The mean PTG is 3.44.
+
+
+
+
+```{r}
+data3 <- na.omit(data.frame(data1$wave1_ptg, data1$wave2_ptg, data1$wave3_ptg))
+```
+```{r}
+ptg.cov <- cov(data3)
+```
+```{r}
+data3
+```
+
+```{r}
+pc1_ptg <- lm(wave2_ptg ~ wave1_ptg + wave1_pts, data = data1)
+pc2_ptg <- lm(wave3_ptg ~ wave2_ptg + wave2_pts, data = data1)
+pc1_pts <- lm(wave2_pts ~ wave1_ptg + wave1_pts, data = data1)
+pc2_pts <- lm(wave3_pts ~ wave2_ptg + wave2_pts, data = data1)
+```
+```{r}
+summary(pc1_pts)
+```
+
+
+
+
+3. Latent class mixture model
+
+
+
+```{r}
+ggplot(data = df_numeric, aes(x = pts, y = ptg, color = factor(wave))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "PTS", y = "PTG", color = "Wave") +
+  theme_minimal()
+```
+
+
+```{r}
+df_numeric <- merge(df_numeric, round(m2$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$clust2 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+df_numeric <- merge(df_numeric, round(m2etv_1$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$etvclust2 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+df_numeric <- merge(df_numeric, round(m2pts_1$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$ptsclust2 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+df_numeric$wave <- as.numeric(sub("wave", "", df_numeric$wave))
+
+```
+
+
+
+
+
+
+
+
+
