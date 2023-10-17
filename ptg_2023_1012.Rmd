@@ -71,13 +71,7 @@ corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper"
     }
 } 
 ```
-```{r}
-wave4 <- data %>% select(contains("ss4"))
-```
 
-```{r}
-str(df_numeric)
-```
 
 Naming
 ```{r}
@@ -572,6 +566,9 @@ summary(m3)
 summary(mq3)
 ```
 
+```{r}
+tab1
+```
 
 
 ```{r}

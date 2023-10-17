@@ -25,7 +25,6 @@ library(knitr)
 library(lavaan)
 library(lcmm)
 library(lme4)
-library(chisq.posthoc.test)
 corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
                      result=c("none", "html", "latex")){
     #Compute correlation matrix
@@ -79,18 +78,9 @@ data <- data %>%
 data <- data %>% 
   mutate(wave4_ptg = rowMeans(select(.,ss4.ptg01,ss4.ptg02,ss4.ptg03,ss4.ptg04,ss4.ptg05,ss4.ptg06,ss4.ptg07,ss4.ptg08,ss4.ptg09,ss4.ptg10)))
 data <- data %>% 
-  mutate(wave4_etv = rowMeans(select(.,ss4.NVL01,ss4.NVL02,ss4.NVL03,ss4.NVL04,ss4.NVL05,ss4.NVL06,ss4.NVL07,ss4.NVL08,ss4.NVL09,ss4.NVL10,ss4.NVL11,
-                                     ss4.NVL12,ss4.NVL13,ss4.NVL14,ss4.NVL15,ss4.NVL16,ss4.NVL17,ss4.NVL18,ss4.NVL19,ss4.NVL20)))
-data <- data %>% 
-  mutate(wave1_gun = rowMeans(select(.,ss1.NVL01,ss1.NVL03,ss1.NVL07,ss1.NVL08,ss1.NVL14,ss1.NVL15)))
-data <- data %>% 
-  mutate(wave2_gun = rowMeans(select(.,ss2.NVL01,ss2.NVL03,ss2.NVL07,ss2.NVL08,ss2.NVL14,ss2.NVL15)))
-data <- data %>% 
-  mutate(wave3_gun = rowMeans(select(.,ss3.NVL01,ss3.NVL03,ss3.NVL07,ss3.NVL08,ss3.NVL14,ss3.NVL15)))
-data1 <- data %>% select(c('SUBJID','ss1.Age','ss1.Sex','ss1.Race','ss2.Age','ss2.Sex','ss2.Race','ss3.Age','ss3.Sex','ss3.Race','wave1_ptg','wave2_ptg','wave3_ptg','wave1_pts','wave2_pts','wave3_pts','wave1_etv','wave2_etv','wave3_etv','wave4_pts','wave4_etv','wave4_ptg','ss4.Age','ss4.Sex','ss4.Race'))
+  mutate(wave4_etv = rowMeans(select(.,ss4.NVL01,ss4.NVL02,ss4.NVL03,ss4.NVL04,ss4.NVL05,ss4.NVL06,ss4.NVL07,ss4.NVL08,ss4.NVL09,ss4.NVL10,ss4.NVL11, ss4.NVL12,ss4.NVL13,ss4.NVL14,ss4.NVL15,ss4.NVL16,ss4.NVL17,ss4.NVL18,ss4.NVL19,ss4.NVL20)))
+data1 <- data %>% select(c('SUBJID','ss1.Age','ss1.Sex','ss1.Race','ss2.Age','ss2.Sex','ss2.Race','ss3.Age','ss3.Sex','ss3.Race','ss4.Age','ss4.Sex','ss4.Race','wave1_ptg','wave2_ptg','wave3_ptg','wave4_ptg','wave1_pts','wave2_pts','wave3_pts','wave4_pts','wave1_etv','wave2_etv','wave3_etv','wave4_etv'))
 ##getting natural log for relevant variables
-
-
 data1 <- data1 %>%
   mutate(across(matches("^wave\\d+_ptg$"), list(logptg = ~log(.))))
 
@@ -103,7 +93,7 @@ rename(wave3_logptg = wave3_ptg_logptg)
 data1 <- data1 %>%
 rename(wave4_logptg = wave4_ptg_logptg)
 
-data2 <- data %>% select(c('SUBJID','ss1.Age','ss1.Sex','ss1.Race','wave1_ptg','wave2_ptg','wave3_ptg','wave1_pts','wave1_etv','wave1_gun'))
+
 data1$ss1.Race <- factor(data1$ss1.Race,
                          levels = c(1,2,3,4,5,6),
                          labels = c("Black", "Hispanic", "Asian","White","Mixed","Other"))
@@ -121,6 +111,7 @@ data1 <- data1 %>% mutate(ss1.Age=as.numeric(ss1.Age), na.rm = TRUE)
 data1 <- data1 %>% mutate(ss2.Age=as.numeric(ss2.Age), na.rm = TRUE)
 data1 <- data1 %>% mutate(ss3.Age=as.numeric(ss3.Age), na.rm = TRUE)
 data1 <- data1 %>% mutate(Gender=as.numeric(ss1.Sex), na.rm = TRUE)
+#create category variable for whether or not they completed they entire study
 data1 <- data1 %>%
   mutate(category = ifelse(is.na(ss4.Sex), "No Data", "Has Data"))
 # Relevel the factor to make '4' the reference category
@@ -136,25 +127,22 @@ df_long <- data1 %>%
     names_pattern = "(wave\\d+)_(ptg|pts|etv|logptg)"  # Use a regular expression to match old column names
   )
 df_clean <- na.omit(df_long)
-df_numeric <- df_clean
 # Remove the letters from the 'SUBJID' column + wave column
-df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
-df_pred <- df_clean %>%
-  filter(wave== "wave1") %>% 
-  select(SUBJID, wave, pts, etv) %>% 
-  rename(pts1 = pts, etv1 = etv)
-df_pred$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_pred$SUBJID))
+df_clean$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_clean$SUBJID))
+df_clean$wave <- as.numeric(sub("wave", "", df_clean$wave))
+df_numeric <- df_clean
+#create df for correlation table
 df_var <- data1 %>% 
   select("wave1_ptg","wave2_ptg","wave3_ptg","wave4_ptg","wave1_pts","wave2_pts","wave3_pts","wave4_pts","wave1_etv","wave2_etv","wave3_etv","wave4_etv")
 df_numeric <- df_numeric %>%
   group_by(SUBJID) %>%
   mutate(etv1 = first(etv), pts1 = first(pts), ptg1 = first(ptg)) %>%
   ungroup()
-df_numeric <- df_numeric %>%
-  group_by(SUBJID) %>%
-  mutate(pts3 = last(pts)) %>%
-  ungroup()
 ```
+```{r}
+unique(df_numeric$wave)
+```
+
 
 #inspecting the data
 ```{r}
@@ -164,6 +152,25 @@ names(data1)
 str(data1) 
 glimpse(data1) 
 summary(data1)
+```
+
+#means and standard deviations
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(ptg), sd = sd(ptg))
+```
+
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(etv), sd = sd(etv))
+```
+
+```{r}
+df_clean %>%
+  group_by(wave) %>%
+  summarise(mean = mean(pts), sd = sd(pts))
 ```
 
 #bivariate correlations
@@ -246,6 +253,49 @@ t.test(pts1 ~ clust2, data = df_numeric)
 t.test(etv1 ~ clust2, data = df_numeric)
 ```
 
+
+#selection based on number of classes
+```{r}
+m1 <- lcmm::hlme(ptg ~ wave, random = ~wave, subject = "SUBJID", ng = 1, data = df_numeric)
+m2 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 2, data = df_numeric, B=m1)
+m3 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 3, data = df_numeric, B=m1)
+m4 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 4, data = df_numeric, B=m1)
+m5 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 5, data = df_numeric, B=m1)
+m6 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 6, data = df_numeric, B=m1)
+# Model with no latent classes (for reference)
+```
+
+```{r}
+#summary table for model comparison
+tab <- as.data.frame(lcmm::summarytable(m1, m2, m3, m4, m5, m6))
+```
+
+```{r}
+mq1 <- lcmm::hlme(ptg ~ wave + I(wave**2), random = ~wave, subject = "SUBJID", ng = 1, data = df_numeric)
+# Models with 2 to 6 latent classes
+mq2 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 2, data = df_numeric, B=mq1)
+mq3 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 3, data = df_numeric, B=mq1)
+mq4 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 4, data = df_numeric, B=mq1)
+mq5 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 5, data = df_numeric, B=mq1)
+mq6 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 6, data = df_numeric, B=mq1)
+```
+```{r}
+#summary table for model comparison
+tab <- as.data.frame(lcmm::summarytable(mq1, mq2, mq3, mq4, mq5, mq6))
+```
+
+```{r}
+table(m3$pprob[,2])
+```
+```{r}
+table(m2$pprob[,2])
+```
+```{r}
+table(mq3$pprob[,2])
+```
+```{r}
+table(mq2$pprob[,2])
+```
 
 
 
@@ -364,47 +414,9 @@ data %>%
 
 
 
-```{r}
-df_clean %>%
-  group_by(wave) %>%
-  summarise(mean = mean(ptg), sd = sd(ptg))
-```
 
-```{r}
-df_clean %>%
-  group_by(wave) %>%
-  summarise(mean = mean(etv), sd = sd(etv))
-```
 
-```{r}
-df_clean %>%
-  group_by(wave) %>%
-  summarise(mean = mean(pts), sd = sd(pts))
-```
-```{r}
-df_clean %>%
-  group_by(wave) %>%
-  summarise(mean = mean(gun), sd = sd(gun))
-```
 
-Latent Class Mixture Model
-```{r}
-m1 <- lcmm::hlme(ptg ~ wave, random = ~wave, subject = "SUBJID", ng = 1, data = df_numeric)
-m2 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 2, data = df_numeric, B=m1)
-m3 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 3, data = df_numeric, B=m1)
-m4 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 4, data = df_numeric, B=m1)
-m5 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 5, data = df_numeric, B=m1)
-m6 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', ng = 6, data = df_numeric, B=m1)
-# Model with no latent classes (for reference)
-mq1 <- lcmm::hlme(ptg ~ wave + I(wave**2), random = ~wave, subject = "SUBJID", ng = 1, data = df_numeric)
-
-# Models with 2 to 6 latent classes
-mq2 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 2, data = df_numeric, B=mq1)
-mq3 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 3, data = df_numeric, B=mq1)
-mq4 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 4, data = df_numeric, B=mq1)
-mq5 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 5, data = df_numeric, B=mq1)
-mq6 <- lcmm::hlme(ptg ~ wave + I(wave**2), mixture = ~wave + I(wave**2), random = ~wave, subject = 'SUBJID', ng = 6, data = df_numeric, B=mq1)
-```
 
 
 
