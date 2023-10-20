@@ -6,17 +6,16 @@ output:
   word_document: default
 ---
 data - complete dataset
-data1 - variables of interest for all wave
-data2 - variables of interest with wave 1 predictors
+data1 - variables of interest for all waves
+df_var - all numeric variables for correlations
 df_long - variables of interest in long format
-df_clean - long format dataset with NAs removed and high - low categories created for post-traumatic growth
+df_clean - long format dataset with NAs removed 
 df_pred - pts and etv at time 1
-df_numeric - df_clean with SUBJID in numeric form to analyze
-df_scaled - with variables of interest scaled (long format)
+df_numeric - df_clean with SUBJID and wave in numeric form to analyze
 
 
-1. PTG visualizes - Should I take the log of these variables?
-2. 
+
+
 
 ```{r}
 library(tidyverse)
@@ -142,11 +141,6 @@ df_clean <- na.omit(df_long)
 df_numeric <- df_clean
 # Remove the letters from the 'SUBJID' column + wave column
 df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
-df_pred <- df_clean %>%
-  filter(wave== "wave1") %>% 
-  select(SUBJID, wave, pts, etv) %>% 
-  rename(pts1 = pts, etv1 = etv)
-df_pred$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_pred$SUBJID))
 df_var <- data1 %>% 
   select("wave1_ptg","wave2_ptg","wave3_ptg","wave4_ptg","wave1_pts","wave2_pts","wave3_pts","wave4_pts","wave1_etv","wave2_etv","wave3_etv","wave4_etv")
 df_numeric <- df_numeric %>%
@@ -157,18 +151,26 @@ df_numeric <- df_numeric %>%
   group_by(SUBJID) %>%
   mutate(pts3 = last(pts)) %>%
   ungroup()
-df_numeric <- merge(df_numeric, round(m2$pprob, 3)[, 1:2], by = "SUBJID")
-df_numeric$clust2 <- as.factor(df_numeric$class)
-df_numeric$class <- NULL
-df_numeric <- merge(df_numeric, round(m2etv_1$pprob, 3)[, 1:2], by = "SUBJID")
-df_numeric$etvclust2 <- as.factor(df_numeric$class)
-df_numeric$class <- NULL
-df_numeric <- merge(df_numeric, round(m2pts_1$pprob, 3)[, 1:2], by = "SUBJID")
-df_numeric$ptsclust2 <- as.factor(df_numeric$class)
-df_numeric$class <- NULL
 df_numeric$wave <- as.numeric(sub("wave", "", df_numeric$wave))
-
+lcga3_linear = gridsearch(rep=10,
+                          maxiter=10,
+                          minit=lcga1_linear,  
+                          hlme(ptg~wave,  
+                               subject="SUBJID",
+                               ng=3,
+                               data=df_numeric,
+                               mixture=~wave)) 
+df_numeric <- merge(df_numeric, round(lcga3_linear$pprob, 3)[, 1:2], by = "SUBJID")
+df_numeric$clust3 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+lcga1_ctrls = hlme(fixed = ptg ~ wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,
+                    subject = "SUBJID",
+                    ng = 1,
+                    data = df_numeric)
 ```
+
+
+
 
 
 
@@ -295,20 +297,93 @@ lcga6_linear = gridsearch(rep=10,
 
 ```
 
-
-
+##Linear model - fixed effects with demographic predictors
 ```{r}
-df_numeric <- merge(df_numeric, round(lcga3_linear$pprob, 3)[, 1:2], by = "SUBJID")
-df_numeric$clust3 <- as.factor(df_numeric$class)
+lcga1_ctrls = hlme(fixed = ptg ~ wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,
+                    subject = "SUBJID",
+                    ng = 1,
+                    data = df_numeric)
+lcga2_ctrls = gridsearch(rep=10,
+                          maxiter=10,
+                          minit=lcga1_ctrls,  
+                          hlme(ptg~wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,  
+                               subject="SUBJID",
+                               ng=2,
+                               data=df_numeric,
+                               mixture=~wave))  
+lcga3_ctrls = gridsearch(rep=10,
+                          maxiter=10,
+                          minit=lcga1_ctrls,  
+                          hlme(ptg~wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,  
+                               subject="SUBJID",
+                               ng=3,
+                               data=df_numeric,
+                               mixture=~wave))  
+lcga4_ctrls = gridsearch(rep=10,
+                          maxiter=10,
+                          minit=lcga1_ctrls,  
+                          hlme(ptg~wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,  
+                               subject="SUBJID",
+                               ng=4,
+                               data=df_numeric,
+                               mixture=~wave))  
+lcga5_ctrls = gridsearch(rep=10,
+                          maxiter=10,
+                          minit=lcga1_ctrls,  
+                          hlme(ptg~wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,  
+                               subject="SUBJID",
+                               ng=5,
+                               data=df_numeric,
+                               mixture=~wave))  
+lcga6_ctrls = gridsearch(rep=10,
+                          maxiter=10,
+                          minit=lcga1_ctrls,  
+                          hlme(ptg~wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,  
+                               subject="SUBJID",
+                               ng=6,
+                               data=df_numeric,
+                               mixture=~wave))  
+
 ```
+
+
+
 
 
 ```{r}
 ggplot(df_numeric, aes(x=wave, y=ptg, colour = clust3, group = SUBJID)) +
   geom_point(size = .1) + geom_line(size = .1) +
   geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
-  scale_color_manual(values=c( "red","green","blue"))
+  scale_color_manual(values=c( "blue","green","red"),
+                        name = "Class",
+                        breaks = c("1","2","3"),
+                        labels =c("Medium", "High", "Low")) +
+    labs(
+    title = "Three Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
 ```
+```{r}
+ggplot(df_numeric, aes(x = wave, y = ptg, linetype = clust3, group = SUBJID)) +
+  geom_point(size = .1) + 
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
+  scale_linetype_manual(values = c("solid", "dashed", "dotted"),
+                        name = "Class",
+                        breaks = c("1","2","3"),
+                        labels =c("Medium", "High", "Low")) +
+    labs(
+    title = "Three Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+```
+
+
 ```{r}
 pp_m3 <- postprob(lcga3_linear)
 head(pp_m3)
@@ -362,10 +437,117 @@ p_value_etv3
 pts_group <- multinom(clust3 ~ pts1, data = df_numeric)
 summary(pts_group)
 exp(coef(pts_group))
+
+pts_group_ctrls <- multinom(clust3 ~ pts1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_numeric)
+summary(pts_group_ctrls)
+exp(coef(pts_group_ctrls))
+
+
+etv_group_ctrls <- multinom(clust3 ~ etv1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_numeric)
+summary(etv_group_ctrls)
+exp(coef(etv_group_ctrls))
+
+
+
+m3pts_full <- lcmm::hlme(ptg ~ wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, subject='SUBJID', classmb = ~ pts1, ng = 3, data = df_numeric, B = lcga3_ctrls)
+
 ```
 #The log odds of being in the high group compared to the low group when PTS is 0 is -1.82; When PTS at time 1 is added, the log odds increase by 0.76 (OR = 2.14); PTS at Time 1 similarly affects the odds of being in the middle class versus the low class (-1.97; increased log odds to 0.99; OR = 2.70)
 
 #Results are significant and align with pattern in exposure to violence
+
+```{r}
+
+
+# Given coefficients and standard errors
+coefficients_pts <- matrix(c(-0.2348698, 2.0192038,
+                             -0.2820404, -1.2640003,
+                             0.148799, 0.750763,
+                             0.8316571, 0.5944501,
+                             0.019784671, 0.004534868,
+                             0.2466652, -0.8239916,
+                             2.132344, 1.900284,
+                             0.1065995, 0.4591572), ncol=2)
+
+std_errors_pts <- matrix(c(0.4665645, 0.4229041,
+                           0.1379694, 0.1565005,
+                           0.2091711, 0.2209796,
+                           0.4119177, 0.3799258,
+                           0.4102430, 0.3710767,
+                           0.3915013, 0.3754349,
+                           0.5363947, 0.5272991,
+                           0.4726280, 0.4334171), ncol=2)
+
+variables_pts <- c("(Intercept)", "pts1", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+group <- rep(2:3, each=length(variables_pts))
+
+z_values_pts <- coefficients_pts / std_errors_pts
+p_values_pts <- 2 * (1 - pnorm(abs(z_values_pts)))
+odds_ratios_pts <- exp(coefficients_pts)
+
+# Create table
+result_table_pts <- data.frame(Variable = rep(variables_pts, 2),
+                               Group = group,
+                               Coefficients = c(coefficients_pts),
+                               Std.Errors = c(std_errors_pts),
+                               Z_values = c(z_values_pts),
+                               P_values = round(c(p_values_pts), 3),
+                               Odds_Ratios = c(odds_ratios_pts))
+
+result_table_pts
+
+
+```
+
+```{r}
+
+
+# Given coefficients and standard errors for _etv
+coefficients_etv <- matrix(c(-0.9314535, 2.0516078,
+                             0.07587087, -1.81763289,
+                             0.0399033, 0.1645796,
+                             0.7685535, 0.5553363,
+                             -0.08351517, -0.21353679,
+                             0.2399803, -0.8565412,
+                             2.000650, 1.674487,
+                             -0.04319033, -0.04535837), ncol=2)
+
+std_errors_etv <- matrix(c(0.5172626, 0.5411081,
+                           0.2826796, 0.3505159,
+                           0.2007665, 0.2010728,
+                           0.4143215, 0.3608932,
+                           0.4090419, 0.3469901,
+                           0.3899148, 0.3541275,
+                           0.5409396, 0.5139968,
+                           0.4674401, 0.4029158), ncol=2)
+
+variables_etv <- c("(Intercept)", "etv1", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+group_etv <- rep(2:3, each=length(variables_etv))
+
+z_values_etv <- coefficients_etv / std_errors_etv
+p_values_etv <- 2 * (1 - pnorm(abs(z_values_etv)))
+odds_ratios_etv <- exp(coefficients_etv)
+
+# Create table
+result_table_etv <- data.frame(Variable = rep(variables_etv, 2),
+                               Group = group_etv,
+                               Coefficients = c(coefficients_etv),
+                               Std.Errors = c(std_errors_etv),
+                               Z_values = c(z_values_etv),
+                               P_values = round(c(p_values_etv), 3),
+                               Odds_Ratios = c(odds_ratios_etv))
+
+result_table_etv
+
+```
+```{r}
+result_table_etv
+result_table_pts 
+```
+
+CLASS 1 - MID; CLASS 2 = HIGH, CLASS 3 = LOW
+
+
 
 
 ##LCMM with random intercept and random slope
@@ -383,10 +565,15 @@ m6 <- lcmm::hlme(ptg ~ wave, mixture = ~wave, random = ~wave, subject='SUBJID', 
 tab1 <- as.data.frame(lcmm::summarytable(m1, m2, m3, m4, m5, m6))
 tab2 <- as.data.frame(lcmm::summarytable(lcga1_linear_RI, lcga2_linear_RI, lcga3_linear_RI, lcga4_linear_RI, lcga5_linear_RI, lcga6_linear_RI))
 tab3 <- as.data.frame(lcmm::summarytable(lcga1_linear, lcga2_linear, lcga3_linear, lcga4_linear, lcga5_linear, lcga6_linear))
+tab4 <- as.data.frame(lcmm::summarytable(lcga1_ctrls, lcga2_ctrls, lcga3_ctrls, lcga4_ctrls, lcga5_ctrls, lcga6_ctrls))
 ```
 ```{r}
 summary(lcga3_linear)
 ```
+```{r}
+summary(lcga6_ctrls)
+```
+
 
 
 # 29.90% in Class 1; 27.32% in Class 2; 42.78% in Class 3 ; Class 1 = Low; Class 2 = High; Class 3 = Medium
@@ -555,6 +742,9 @@ summary(pts_gender)
 ```{r}
 ptg_gender <- t.test(wave1_ptg ~ Gender, data = data1)
 summary(ptg_gender)
+```
+```{r}
+summary(lcga3_ctrls)
 ```
 
 
