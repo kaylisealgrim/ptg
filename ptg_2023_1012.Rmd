@@ -73,6 +73,7 @@ corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper"
 ```
 
 
+
 Naming
 ```{r}
 data <- read.csv("ptg_data.csv")
@@ -161,15 +162,65 @@ lcga3_linear = gridsearch(rep=10,
                                data=df_numeric,
                                mixture=~wave)) 
 df_numeric <- merge(df_numeric, round(lcga3_linear$pprob, 3)[, 1:2], by = "SUBJID")
+# Convert the 'class' column to a factor and store in 'clust3'
 df_numeric$clust3 <- as.factor(df_numeric$class)
+
+# Remove the 'class' column
 df_numeric$class <- NULL
+
+# Rename the factor levels of 'clust3'
+levels(df_numeric$clust3) <- c("low", "high", "mid")
+
+# Set "low" as the reference category for 'clust3'
+df_numeric$clust3 <- relevel(df_numeric$clust3, ref = "low")
+
 lcga1_ctrls = hlme(fixed = ptg ~ wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,
                     subject = "SUBJID",
                     ng = 1,
                     data = df_numeric)
+
+missing <- df_numeric %>% filter(wave == "1") %>% 
+  select(category,pts1, ptg1,etv1,Gender,ss1.Race,ss1.Age,clust3) 
 ```
 
 
+```{r}
+df_numeric$clust3 <- as.factor(df_numeric$class)
+df_numeric$class <- NULL
+# Set class 3 (low) as the reference category
+df_numeric$clust3 <- relevel(df_numeric$clust3, ref = "3")
+```
+
+
+
+```{r}
+summary(lcga3_linear)
+```
+
+
+```{r}
+summary(df_numeric$clust3)
+```
+
+```{r}
+data1 %>%
+  group_by(ss1.Race) %>%
+  summarise(
+    mean_wave1_ptg = round(mean(wave1_ptg, na.rm = TRUE),3),
+    sd_wave1_ptg = round(sd(wave1_ptg, na.rm = TRUE),3),
+    
+    mean_wave2_ptg = round(mean(wave2_ptg, na.rm = TRUE),3),
+    sd_wave2_ptg = round(sd(wave2_ptg, na.rm = TRUE),3),
+    
+    mean_wave3_ptg = round(mean(wave3_ptg, na.rm = TRUE),3),
+    sd_wave3_ptg = round(sd(wave3_ptg, na.rm = TRUE),3),
+    
+    mean_wave4_ptg = round(mean(wave4_ptg, na.rm = TRUE),3),
+    sd_wave4_ptg = round(sd(wave4_ptg, na.rm = TRUE),3)
+  )
+
+
+```
 
 
 
@@ -346,6 +397,13 @@ lcga6_ctrls = gridsearch(rep=10,
 
 ```
 
+```{r}
+df_numeric %>% group_by(clust3) %>% 
+  summarise(mean = mean(ptg))
+```
+
+
+
 
 
 
@@ -356,7 +414,7 @@ ggplot(df_numeric, aes(x=wave, y=ptg, colour = clust3, group = SUBJID)) +
   geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
   scale_color_manual(values=c( "blue","green","red"),
                         name = "Class",
-                        breaks = c("1","2","3"),
+                        breaks = c("mid","low","high"),
                         labels =c("Medium", "High", "Low")) +
     labs(
     title = "Three Class Model for Post-Traumatic Growth Trajectories",
@@ -372,9 +430,45 @@ ggplot(df_numeric, aes(x = wave, y = ptg, linetype = clust3, group = SUBJID)) +
   geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
   scale_linetype_manual(values = c("solid", "dashed", "dotted"),
                         name = "Class",
-                        breaks = c("1","2","3"),
-                        labels =c("Medium", "High", "Low")) +
+                        breaks = c("mid","high","low"),
+                        labels =c("Low", "High", "Medium")) +
     labs(
+    title = "Three Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+```
+
+
+```{r}
+ggplot(df_numeric, aes(x = wave, y = ptg, linetype = clust3, group = SUBJID)) +
+  geom_point(size = .1) + 
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
+  scale_linetype_manual(values = c("solid", "dotted", "dashed"),
+                        name = "Class",
+                        breaks = c("mid", "low", "high"),
+                        labels = c("Low", "Medium", "High")) +
+  labs(
+    title = "Three Class Model for Post-Traumatic Growth Trajectories",
+    x = "Wave",
+    y = "Post-Traumatic Growth"
+  ) + 
+  theme_minimal()
+
+```
+```{r}
+ggplot(df_numeric, aes(x = wave, y = ptg, linetype = clust3, group = SUBJID)) +
+  geom_point(size = .1) + 
+  geom_line(size = .1) +
+  geom_smooth(se = FALSE, method = "loess", aes(group = clust3)) +
+  scale_linetype_manual(values = c("solid", "dotted", "dashed"),
+                        name = "Class",
+                        breaks = c("high", "low", "mid"),
+                        labels = c("High", "Medium", "Low")) +
+  labs(
     title = "Three Class Model for Post-Traumatic Growth Trajectories",
     x = "Wave",
     y = "Post-Traumatic Growth"
@@ -447,10 +541,6 @@ etv_group_ctrls <- multinom(clust3 ~ etv1 + Gender + ss1.RaceBlack + ss1.RaceHis
 summary(etv_group_ctrls)
 exp(coef(etv_group_ctrls))
 
-
-
-m3pts_full <- lcmm::hlme(ptg ~ wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, subject='SUBJID', classmb = ~ pts1, ng = 3, data = df_numeric, B = lcga3_ctrls)
-
 ```
 #The log odds of being in the high group compared to the low group when PTS is 0 is -1.82; When PTS at time 1 is added, the log odds increase by 0.76 (OR = 2.14); PTS at Time 1 similarly affects the odds of being in the middle class versus the low class (-1.97; increased log odds to 0.99; OR = 2.70)
 
@@ -489,7 +579,7 @@ odds_ratios_pts <- exp(coefficients_pts)
 result_table_pts <- data.frame(Variable = rep(variables_pts, 2),
                                Group = group,
                                Coefficients = c(coefficients_pts),
-                               Std.Errors = c(std_errors_pts),
+                               Std.Errors = round(c(std_errors_pts), 3),
                                Z_values = c(z_values_pts),
                                P_values = round(c(p_values_pts), 3),
                                Odds_Ratios = c(odds_ratios_pts))
@@ -497,6 +587,9 @@ result_table_pts <- data.frame(Variable = rep(variables_pts, 2),
 result_table_pts
 
 
+```
+```{r}
+summary(lcga3_linear)
 ```
 
 ```{r}
@@ -532,7 +625,7 @@ odds_ratios_etv <- exp(coefficients_etv)
 result_table_etv <- data.frame(Variable = rep(variables_etv, 2),
                                Group = group_etv,
                                Coefficients = c(coefficients_etv),
-                               Std.Errors = c(std_errors_etv),
+                               Std.Errors = round(c(std_errors_etv),3),
                                Z_values = c(z_values_etv),
                                P_values = round(c(p_values_etv), 3),
                                Odds_Ratios = c(odds_ratios_etv))
@@ -540,6 +633,10 @@ result_table_etv <- data.frame(Variable = rep(variables_etv, 2),
 result_table_etv
 
 ```
+
+
+
+
 ```{r}
 result_table_etv
 result_table_pts 
@@ -568,15 +665,32 @@ tab3 <- as.data.frame(lcmm::summarytable(lcga1_linear, lcga2_linear, lcga3_linea
 tab4 <- as.data.frame(lcmm::summarytable(lcga1_ctrls, lcga2_ctrls, lcga3_ctrls, lcga4_ctrls, lcga5_ctrls, lcga6_ctrls))
 ```
 ```{r}
-summary(lcga3_linear)
+summary(lcga6_linear)
 ```
 ```{r}
 summary(lcga6_ctrls)
 ```
+```{r}
+summary(lcga3_linear)
+```
+```{r}
+conting_gender <- table(df_numeric$Gender, df_numeric$clust3)
+conting_race <- table(df_numeric$ss1.Race, df_numeric$clust3)
+conting_age <- table(df_numeric$ss1.Age, df_numeric$clust3)
+chisq.test(conting_gender)
+chisq.test(conting_race)
+chisq.test(conting_age)
+```
+```{r}
+chisq.posthoc.test(conting_race)
+```
 
 
 
-# 29.90% in Class 1; 27.32% in Class 2; 42.78% in Class 3 ; Class 1 = Low; Class 2 = High; Class 3 = Medium
+
+
+
+# 29.90% in Class 1; 27.32% in Class 2; 42.78% in Class 3 ; Class 1 = Mid; Class 2 = High; Class 3 = Low
 
 
 ```{r}
@@ -617,32 +731,64 @@ plot(cubic_model)
 ```
 
 ```{r}
-tab_cluster_gender <- table(df_numeric$clust2, df_numeric$Gender)
-tab_cluster_race <- table(df_numeric$clust2, df_numeric$ss1.Race)
-tab_cluster_age <- table(df_numeric$clust2, df_numeric$ss1.Age)
+tab_cluster_gender <- table(df_numeric$clust3, df_numeric$Gender)
+tab_cluster_race <- table(df_numeric$clust3, df_numeric$ss1.Race)
+tab_cluster_age <- table(df_numeric$clust3, df_numeric$ss1.Age)
+tab_cluster_missing <- table(df_numeric$clust3, df_numeric$category)
 ```
 ```{r}
 chisq.test(tab_cluster_gender)
+chisq.test(tab_cluster_missing)
 chisq.test(tab_cluster_race) 
 chisq.test(tab_cluster_age) 
 t.test(pts1 ~ clust2, data = df_numeric)
 t.test(etv1 ~ clust2, data = df_numeric)
+aov1 <- aov(pts1 ~ clust3, data = df_numeric)
+aov2 <- aov(etv1 ~ clust3, data = df_numeric)
+summary(aov1)
+summary(aov2)
 ```
-
 ```{r}
-missing <- df_numeric %>% filter(wave == "wave1") %>% 
-  select(category, pts1, ptg1,etv1,Gender,ss1.Race,ss1.Age) 
+# Ensure the necessary package is installed and loaded
+if (!require("multcomp")) install.packages("multcomp", dependencies = TRUE)
+library(multcomp)
+
+# Tukey HSD for aov1
+tukey1 <- TukeyHSD(aov1)
+print(tukey1)
+
+# Tukey HSD for aov2
+tukey2 <- TukeyHSD(aov2)
+print(tukey2)
+
 ```
 
+
+
+
+
+###CORRECT TO USE MISSING OTHERWISE TAKES ALL DATA FROM 1 - 3
 ```{r}
 tab_category_gender <- table(missing$category, missing$Gender)
 tab_category_race <- table(missing$category, missing$ss1.Race)
 tab_category_age <- table(missing$category, missing$ss1.Age)
+tab_category_cluster <- table(missing$category, missing$clust3)
 chisq.test(tab_category_gender) 
 chisq.test(tab_category_race)
 t.test(pts1 ~ category, data = missing)
 t.test(etv1 ~ category, data = missing)
 t.test(ptg1 ~ category, data = missing)
+```
+```{r}
+view(missing)
+```
+
+```{r}
+tab_category_gender
+```
+
+```{r}
+df_numeric$category
 ```
 
 
@@ -772,6 +918,9 @@ ggplot(df_clean, aes(x = wave, y = ptg, group = SUBJID, color = factor(SUBJID)))
   theme_minimal() +
   theme(legend.position = "none")
 ```
+```{r}
+summary(df_var)
+```
 
 
 !!! Transform overweighted zeroes?
@@ -861,6 +1010,10 @@ data1 %>%
   summarise(count = n()) %>%
   mutate(percentage = (count / sum(count)) * 100)
 ```
+```{r}
+cor.test(data1$wave4_ptg, data1$wave4_pts, na.rm = TRUE)
+```
+
 
 ```{r}
 data %>%
@@ -1011,9 +1164,7 @@ m2etv_full <- lcmm::hlme(ptg ~ wave + etv1 + ss1.RaceBlack + ss1.RaceHispanic + 
 m2pts_full <- lcmm::hlme(ptg ~ wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
 m2race_full <- lcmm::hlme(ptg ~ wave + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', ng = 2, data = df_numeric)
 ```
-```{r}
-chisq.posthoc.test(conting_race)
-```
+
 
 
 ```{r}
@@ -1121,18 +1272,7 @@ df_numeric$class <- NULL
 summary(m1)
 ```
 
-```{r}
 
-```
-
-```{r}
-conting_gender <- table(df_numeric$Gender, df_numeric$clust2)
-conting_race <- table(df_numeric$ss1.Race, df_numeric$clust2)
-conting_age <- table(df_numeric$ss1.Age, df_numeric$clust2)
-chisq.test(conting_gender)
-chisq.test(conting_race)
-chisq.test(conting_age)
-```
 
 Post-traumatic stress is significantly higher for those in Group 2
 
