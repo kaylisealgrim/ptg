@@ -83,7 +83,6 @@ data1 <- data %>% select(c('SUBJID','ss1.Age','ss1.Sex','ss1.Race','ss2.Age','ss
 ##getting natural log for relevant variables
 data1 <- data1 %>%
   mutate(across(matches("^wave\\d+_ptg$"), list(logptg = ~log(.))))
-
 data1 <- data1 %>%
 rename(wave1_logptg = wave1_ptg_logptg)
 data1 <- data1 %>%
@@ -478,17 +477,7 @@ ggplot(tab2, aes(x=G, y=BIC)) +
   theme_classic()
 ```
 
-Predictors
 
-```{r}
-#Final models
-m2etv_1 <- lcmm::hlme(ptg ~ wave + etv1, mixture = ~wave + etv1, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 2, data = df_numeric)
-m2pts_1 <- lcmm::hlme(ptg ~ wave + pts1, mixture = ~wave + pts1, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
-m2etv_full <- lcmm::hlme(ptg ~ wave + etv1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + etv1 + ss1.RaceBlack + ss1.RaceHispanic + 
-                           ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 2, data = df_numeric)
-m2pts_full <- lcmm::hlme(ptg ~ wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + pts1 + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
-m2race_full <- lcmm::hlme(ptg ~ wave + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, mixture = ~wave + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, random = ~wave, subject='SUBJID', ng = 2, data = df_numeric)
-```
 ```{r}
 chisq.posthoc.test(conting_race)
 ```
@@ -539,42 +528,7 @@ m2race <- lcmm::hlme(
 
 ```
 
-```{r}
-summary(m2gender)
-```
-```{r}
-summary(m2race)
-```
 
-```{r}
-summary(m2age)
-```
-
-
-```{r}
-summary(m2etv)
-summary(m3etv)
-```
-```{r}
-summary(m3pts)
-summary(m2pts)
-```
-```{r}
-summary(m3gun)
-summary(m2gun)
-```
-
-
-Predictors Wave 1
-
-```{r}
-m2etv_1 <- lcmm::hlme(ptg ~ wave + etv1, mixture = ~wave + etv1, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 2, data = df_numeric)
-m3etv_1 <- lcmm::hlme(ptg ~ wave + etv1, mixture = ~wave + etv1, random = ~wave, subject='SUBJID', classmb = ~ etv1, ng = 3, data = df_numeric)
-m2pts_1 <- lcmm::hlme(ptg ~ wave + pts1, mixture = ~wave + pts1, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 2, data = df_numeric)
-m3pts_1 <- lcmm::hlme(ptg ~ wave + pts1, mixture = ~wave + pts1, random = ~wave, subject='SUBJID', classmb = ~ pts1, ng = 3, data = df_numeric)
-m2gun_1 <- lcmm::hlme(ptg ~ wave + gun1, mixture = ~wave + gun1, random = ~wave, subject='SUBJID', classmb = ~ gun, ng = 2, data = df_numeric)
-m3gun_1 <- lcmm::hlme(ptg ~ wave + gun1, mixture = ~wave + gun1, random = ~wave, subject='SUBJID', classmb = ~ gun, ng = 3, data = df_numeric)
-```
 
 Other Models
 
@@ -605,48 +559,12 @@ simple_model2 <- lcmm::hlme(fixed = ptg ~ wave + gun1,
                            data = df_numeric)
 
 ```
-```{r}
-summary(simple_model2)
-```
-```{r}
-summary(m2)
-```
-
-
-```{r}
-summary(m2etv_1)
-```
 
 
 
-```{r}
-summary(m3pts_1)
-summary(m2pts_1)
-```
-```{r}
-summary(m3gun_1)
-summary(m2gun_1)
-```
-
-
-```{r}
-view(df_numeric)
-```
-
-```{r}
-df_numeric %>% filter(wave == "wave3")
-```
 
 
 
-```{r}
-data1 %>% 
-  summarise(mean1 = mean(wave1_etv), mean2 = mean(wave2_etv, na.rm = TRUE), mean3 = mean(wave3_etv, na.rm = TRUE))
-```
-```{r}
-data1 %>% 
-  summarise(mean1 = mean(wave1_gun), mean2 = mean(wave2_gun, na.rm = TRUE), mean3 = mean(wave3_gun, na.rm = TRUE))
-```
 
 ```{r}
 d <- aov(etv ~ wave, data = df_numeric)
@@ -1039,7 +957,13 @@ ggplot(data = df_numeric, aes(x = pts, y = ptg, color = factor(wave))) +
   labs(x = "PTS", y = "PTG", color = "Wave") +
   theme_minimal()
 ```
-
+```{r}
+ggplot(data = df_numeric, aes(x = etv, y = ptg, color = factor(wave))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = "ETV", y = "PTG", color = "Wave") +
+  theme_minimal()
+```
 
 ```{r}
 df_numeric <- merge(df_numeric, round(m2$pprob, 3)[, 1:2], by = "SUBJID")

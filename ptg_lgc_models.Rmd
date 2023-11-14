@@ -35,6 +35,7 @@ df_clean <- na.omit(df_long)
 df_numeric <- df_clean
 # Remove the letters from the 'SUBJID' column + wave column
 df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
+df_numeric$wave <- as.numeric(sub("wave", "", df_numeric$wave))
 ```
 ```{r}
 view(df_long)
@@ -658,34 +659,9 @@ df_long
 
 3. Latent class mixture model
 
-```{r}
-data1
-```
-```{r}
-df_long <- data1 %>%
-  pivot_longer(
-    cols = -SUBJID,  # Exclude SUBJID from reshaping
-    names_to = c("wave", ".value"),  # Specify where parts of the old column names will go
-    names_pattern = "(wave\\d+)_(pts|ptg)"  # Use a regular expression to match old column names
-  )
 
-```
-```{r}
-df_numeric <- df_long
-# Remove the letters from the 'SUBJID' column + wave column
-df_numeric$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_numeric$SUBJID))
-df_numeric$wave <- as.numeric(gsub("[A-Za-z]", "", df_numeric$wave))
-df_numeric
-```
 
-```{r}
-class(data1)
-dim(df_numeric) 
-names(df_numeric) 
-str(data1) 
-glimpse(df_numeric) 
-summary(df_numeric) 
-```
+
 ----
 ```{r}
 mpts1 <- lcmm(pts ~ wave, random = ~ wave, subject = 'SUBJID', ng = 1, data = df_numeric)
@@ -800,9 +776,6 @@ summary(pc2)
 summary(pc3)
 summary(pc4)
 ```
-
-
-
 
 
 

@@ -119,6 +119,17 @@ data1$ss3.Race <- factor(data1$ss3.Race,
 data1$ss4.Race <- factor(data1$ss4.Race,
                          levels = c(1,2,3,4,5,6),
                          labels = c("Black", "Hispanic", "Asian","White","Mixed","Other"))
+data1 <- data1 %>%
+  mutate(race_attrition1 = if_else(ss1.Race == "White", 1, 0))
+data1 <- data1 %>%
+  mutate(race_attrition2 = if_else(ss2.Race == "White", 1, 0))
+data1 <- data1 %>%
+  mutate(race_attrition3 = if_else(ss3.Race == "White", 1, 0))
+data1 <- data1 %>%
+  mutate(race_attrition4 = if_else(ss4.Race == "White", 1, 0))
+
+
+
 data1 <- data1 %>% mutate(ss1.Sex=recode(ss1.Sex,'1'='1','2'='0'))
 data1 <- data1 %>% mutate(ss1.Age=as.numeric(ss1.Age), na.rm = TRUE)
 data1 <- data1 %>% mutate(ss2.Age=as.numeric(ss2.Age), na.rm = TRUE)
@@ -183,6 +194,15 @@ missing <- df_numeric %>% filter(wave == "1") %>%
   select(category,pts1, ptg1,etv1,Gender,ss1.Race,ss1.Age,clust3) 
 ```
 
+```{r}
+data1 %>% filter(race_attrition1 == "1")
+data1 %>% filter(SUBJID == "JC3017")
+data1 %>% filter(SUBJID == "JC4027")
+data1 %>% filter(SUBJID == "JC4149")
+```
+
+
+
 
 ```{r}
 df_numeric$clust3 <- as.factor(df_numeric$class)
@@ -221,6 +241,43 @@ data1 %>%
 
 
 ```
+
+```{r}
+df_numeric <- df_numeric %>% 
+  mutate(ptg_mean = mean(ptg))
+
+df_numeric <- df_numeric %>% 
+  mutate(ptg_sd = sd(ptg))
+
+df_numeric <- df_numeric %>%
+  mutate(Rating = case_when(
+    ptg > (ptg_mean + ptg_sd) ~ "High PTG",
+    ptg < (ptg_mean - ptg_sd) ~ "Low PTG",
+    TRUE ~ "Medium PTG"))
+
+cluster_himidlo <- table(df_numeric$Rating, df_numeric$clust3)
+cluster_himidlo
+chisq.test(cluster_himidlo)
+
+
+df_numeric <- df_numeric %>% 
+  mutate(etv_mean = mean(etv))
+
+df_numeric <- df_numeric %>% 
+  mutate(etv_sd = sd(etv))
+
+df_numeric <- df_numeric %>%
+  mutate(ETVRating = case_when(
+    etv > (etv_mean + etv_sd) ~ "High etv",
+    etv < (etv_mean - etv_sd) ~ "Low etv",
+    TRUE ~ "Medium etv"))
+
+etv_himidlo <- table(df_numeric$ETVRating, df_numeric$clust3)
+etv_himidlo
+chisq.test(etv_himidlo)
+
+```
+
 
 
 
@@ -775,6 +832,7 @@ tab_category_age <- table(missing$category, missing$ss1.Age)
 tab_category_cluster <- table(missing$category, missing$clust3)
 chisq.test(tab_category_gender) 
 chisq.test(tab_category_race)
+chisq.test(tab_category_cluster)
 t.test(pts1 ~ category, data = missing)
 t.test(etv1 ~ category, data = missing)
 t.test(ptg1 ~ category, data = missing)
