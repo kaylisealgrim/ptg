@@ -70,7 +70,6 @@ corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper"
 ```
 
 
-
 Naming
 ```{r}
 data <- read.csv("ptg_data.csv")
@@ -179,44 +178,166 @@ df_numeric$clust3 <- as.factor(df_numeric$class)
 
 # Remove the 'class' column
 df_numeric$class <- NULL
-
-lcga1_ctrls = hlme(fixed = ptg ~ wave + Gender + ss1.RaceWhite + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther,
-                    subject = "SUBJID",
-                    ng = 1,
-                    data = df_numeric)
-
 missing <- df_numeric %>% filter(wave == "1") %>% 
   select(category,pts1, ptg1,etv1,Gender,ss1.Race,ss1.Age,clust3) 
 # Set "low" as the reference category for 'clust3'
-df_numeric$clust3 <- relevel(df_numeric$clust3, ref = "1")
 #ADD this back in to the naming category
 # Rename the factor levels of 'clust3'
-levels(df_numeric$clust3) <- c("low", "high", "mid")
-# Set "low" as the reference category for 'clust3'
-df_numeric$clust3 <- relevel(df_numeric$clust3, ref = "low")
+
+levels_label <- df_numeric %>% 
+  group_by(clust3) %>% 
+  summarize(mean_ptg = mean(ptg, na.rm = TRUE))
+
+levels_label <- levels_label %>% 
+  arrange(desc(mean_ptg)) %>% 
+  mutate(rank = row_number())
+
+levels_label <- levels_label %>%
+  mutate(label = case_when(
+    rank == 1 ~ "high",
+    rank == 2 ~ "mid",
+    rank == 3 ~ "low"
+  ))
+df_numeric <- df_numeric %>%
+  left_join(levels_label, by = "clust3") %>%
+  mutate(clust3_label = label) %>%
+  select(-mean_ptg, -rank, -label)
 df_relabel <- data1
 df_wide <- df_numeric %>%
-  pivot_wider(names_from = wave, values_from = c(clust3), id_cols = SUBJID)
+  pivot_wider(names_from = wave, values_from = c(clust3, clust3_label), id_cols = SUBJID)
 df_wide$SUBJID <- as.factor(df_wide$SUBJID)
 df_relabel$SUBJID <- as.factor(df_relabel$SUBJID)
 df_relabel$SUBJID <- as.numeric(gsub("[A-Za-z]", "", df_relabel$SUBJID))
-data_merged <- merge(df_relabel, df_wide[c("SUBJID", "1")], by = "SUBJID", all.x = TRUE)
-data_merged <- data_merged[!is.na(data_merged$ss1.Age), ]
-data_merged <- data_merged  %>% rename(clust3 = `1`)
+merged_df <- merge(df_wide, df_relabel, by = "SUBJID")
+select_df <- merged_df %>% select(SUBJID, clust3_1, clust3_label_1, wave1_etv, wave1_pts, Gender, ss1.RaceBlack, ss1.RaceHispanic, ss1.RaceAsian, ss1.RaceMixed, ss1.RaceOther, wave1_ptg, ss1.Race)
+select_df <- select_df %>% rename(clust3 = clust3_1, clust3_label = clust3_label_1)
+merge_model <- multinom(clust3_label ~ wave1_etv + wave1_pts + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = select_df)
+summary(merge_model)
 df_wide_2 <- df_numeric %>%
   pivot_wider(names_from = wave, 
-              values_from = c(clust3, etv1, pts1, Gender, ss1.RaceBlack, ss1.RaceHispanic, ss1.RaceAsian, ss1.RaceMixed, ss1.RaceOther, ptg),
+              values_from = c(clust3_label, etv1, pts1, Gender, ss1.RaceBlack, ss1.RaceHispanic, ss1.RaceAsian, ss1.RaceMixed, ss1.RaceOther, ptg),
               id_cols = SUBJID)
               
 df_wide_2 <- df_wide_2 %>% 
-  rename(clust3 = clust3_1, etv1 = etv1_1, pts1 = pts1_1, Gender = Gender_1, ss1.RaceBlack = ss1.RaceBlack_1, ss1.RaceHispanic = ss1.RaceHispanic_1, ss1.RaceAsian = ss1.RaceAsian_1, ss1.RaceMixed = ss1.RaceMixed_1, ss1.RaceOther = ss1.RaceOther_1, ptg = ptg_1)
+  rename(clust3_label = clust3_label_1, etv1 = etv1_1, pts1 = pts1_1, Gender = Gender_1, ss1.RaceBlack = ss1.RaceBlack_1, ss1.RaceHispanic = ss1.RaceHispanic_1, ss1.RaceAsian = ss1.RaceAsian_1, ss1.RaceMixed = ss1.RaceMixed_1, ss1.RaceOther = ss1.RaceOther_1, ptg = ptg_1)
 
 df_wide_2 <- df_wide_2 %>% 
-  select(clust3, etv1, pts1, Gender, ss1.RaceBlack, ss1.RaceHispanic, ss1.RaceAsian, ss1.RaceMixed, ss1.RaceOther, ptg)
+  select(clust3_label, etv1, pts1, Gender, ss1.RaceBlack, ss1.RaceHispanic, ss1.RaceAsian, ss1.RaceMixed, ss1.RaceOther, ptg)
+df_wide_2$clust3_label <- factor(df_wide_2$clust3_label, levels = c("low", "mid", "high"))
+df_numeric$clust3_label <- factor(df_numeric$clust3_label, levels = c("low", "mid", "high"))
+```
+
+
+```{r}
+library(haven)
+
+write_sav(select_df, "select_data.sav")
+```
+
+
+```{r}
+table(select_df$clust3_label)
+```
+
+```{r}
+##The emergency block
+view(select_df)
+merge_model <- multinom(clust3_label ~ wave1_etv + wave1_pts + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = select_df)
+summary(merge_model)
+
+#anovas a = cluster label, b = cluster class number; same results means I'm comforable using cluster labels
+aov3a <- aov(wave1_etv ~ clust3_label, data = select_df)
+summary(aov3a)
+aov3b <- aov(wave1_etv ~ clust3, data = select_df)
+summary(aov3b)
+aov4a <- aov(wave1_pts ~ clust3_label, data = select_df)
+summary(aov4a)
+aov4b <- aov(wave1_pts ~ clust3, data = select_df)
+summary(aov4b)
+TukeyHSD(aov3a)
+TukeyHSD(aov4a)
+TukeyHSD(aov3b)
+TukeyHSD(aov4b)
+table_gender <- table(select_df$Gender, select_df$clust3_label)
+table_race <- table(select_df$ss1.Race, select_df$clust3_label)
+chisq.test(table_gender)
+chisq.test(table_race)
+table(select_df$ss1.race, select_df$clust3_label)
+table(select_df$Gender, select_df$clust3_label) 
+length(select_df$ss1.Race)
+
+complete_data <- select_df[complete.cases(select_df$ss1.race, select_df$clust3_label), ]
+table(complete_data$ss1.race, complete_data$clust3_label)
 
 ```
+
+
+```{r}
+colnames(df_wide_2)
+```
+
+
+```{r}
+df_numeric %>%
+  group_by(clust3_label) %>%
+  summarize(mean = mean(ptg))
+```
+```{r}
+colnames(df_numeric)
+```
+
+
+
+```{r}
+summary(merge_model)
+```
+```{r}
+# Coefficients for 'mid' and 'high' categories for the merge_model bad, possibly worse?
+coefficients <- matrix(c(-2.655741, 0.5976946, 1.1773147, -0.6131220, -0.5464942, -0.3013413, 0.8617175, -1.9156269, -0.5266906,
+                         -2.694907, 0.6851649, 0.8156827, -0.5029275, 0.2064163, -0.3846249, 0.9055494, -0.2315693, -0.2580464), 
+                       ncol=9, byrow = TRUE)
+
+# Standard errors for 'mid' and 'high' categories
+std_errors <- matrix(c(0.9772299, 0.6027074, 0.3050416, 0.4096141, 0.7080132, 0.6792008, 0.6912819, 0.9299509, 0.8113750,
+                       1.0457773, 0.6234894, 0.3241923, 0.4337231, 0.7711326, 0.7882847, 0.7785927, 0.8649438, 0.9160596), 
+                     ncol=9, byrow = TRUE)
+
+# Calculate odds ratios, z-values, and p-values
+odds_ratios <- exp(coefficients)
+z_values <- coefficients / std_errors
+p_values <- 2 * pnorm(-abs(z_values))
+
+# Variable names
+variables <- c("Intercept", "wave1_etv", "wave1_pts", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+
+# Categories for each coefficient set
+categories <- rep(c("mid", "high"), each = length(variables))
+
+# Creating the results table
+results_table <- data.frame(Category = categories,
+                            Variable = rep(variables, 2),
+                            Coefficients = c(coefficients),
+                            Std.Errors = c(std_errors),
+                            Odds.Ratios = c(odds_ratios),
+                            Z.values = c(z_values),
+                            P.values = round(c(p_values), 4))
+
+# Displaying the results table
+print(results_table)
+
+```
+
+
+```{r}
+view(select_df)
+```
+
 ```{r}
 view(df_wide_2)
+```
+```{r}
+data_merged <- merge(df_relabel, df_wide[c("SUBJID", "1")], by = "SUBJID", all.x = TRUE)
+data_merged <- data_merged  %>% rename(clust3 = `1`)
 ```
 
 
@@ -243,15 +364,9 @@ lcga3_linear$pprob
 view(df_wide)
 ```
 
-
-
 ```{r}
 str(df_wide)
 ```
-
-
-
-
 
 ```{r}
 data1 %>% filter(race_attrition1 == "1")
@@ -259,15 +374,6 @@ data1 %>% filter(SUBJID == "JC3017")
 data1 %>% filter(SUBJID == "JC4027")
 data1 %>% filter(SUBJID == "JC4149")
 ```
-
-```{r}
-df_numeric %>%
-  group_by(clust3) %>%
-  summarize(mean = mean(ptg))
-
-```
-
-
 
 ```{r}
 df_numeric$clust3 <- as.factor(df_numeric$class)
@@ -666,17 +772,154 @@ exp(coef(pts_group_ctrls))
 etv_group_ctrls <- multinom(clust3 ~ etv1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_numeric)
 summary(etv_group_ctrls)
 exp(coef(etv_group_ctrls))
-
+df_numeric$clust3 <- factor(df_numeric$clust3, levels = c("3", "1", "2"))
 fullmodel <- multinom(clust3 ~ etv1 + pts1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_numeric)
-
-wide_model <- multinom(clust3 ~ etv1 + pts1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_wide_2)
+fullmodel2 <- multinom(clust3_label ~ SUBJID + etv1 + pts1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_numeric)
+merged_df <- merged_df %>% 
+  rename(clust3 = 1)
+merge_model <- multinom(1 ~ wave1_etv + wave1_pts + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = merged_df)
+wide_model <- multinom(clust3_label ~ etv1 + pts1 + Gender + ss1.RaceBlack + ss1.RaceHispanic + ss1.RaceAsian + ss1.RaceMixed + ss1.RaceOther, data = df_wide_2)
 summary(fullmodel)
+summary(fullmodel2)
 summary(wide_model)
 exp(coef(fullmodel))
+odds_ratios <- exp(coef(wide_model))
+view(odds_ratios)
+view(df_wide_2)
 ```
+
+```{r}
+#interpretable fullmodel with wave predictor
+#pts and etv are non-sig but almost all race and gender predictors are? doesn't seem right
+
+# Coefficients for categories 1 and 2 (assuming category 3 is the reference)
+coefficients <- matrix(c(-2.850799, 0.01680523, 0.8302211, 1.1165364, -0.6633143, -0.68990742, -0.05595215, 0.8155134, -1.95982866, -0.4721150,
+                         -3.463837, 0.03216293, 1.2181236, 0.7561324, -0.4879568, 0.07580734, -0.07301970, 1.0494525, 0.07627947, -0.3857532), 
+                       ncol=10, byrow = TRUE)
+
+# Standard errors for categories 1 and 2
+std_errors <- matrix(c(0.6076433, 0.09435963, 0.3772647, 0.1665592, 0.2238906, 0.3818157, 0.3706941, 0.3742053, 0.5314823, 0.4322365,
+                       0.6548465, 0.10044541, 0.3831468, 0.1776905, 0.2385173, 0.4297187, 0.4409313, 0.4320755, 0.4789691, 0.5132309), 
+                     ncol=10, byrow = TRUE)
+
+# Calculate odds ratios, z-values, and p-values
+odds_ratios <- exp(coefficients)
+z_values <- coefficients / std_errors
+p_values <- 2 * pnorm(-abs(z_values))
+
+# Variable names
+variables <- c("Intercept", "wave", "etv1", "pts1", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+
+# Categories for each coefficient set
+categories <- rep(c("1", "2"), each = length(variables))
+
+# Creating the results table
+results_table <- data.frame(Category = categories,
+                            Variable = rep(variables, 2),
+                            Coefficients = c(coefficients),
+                            Std.Errors = c(std_errors),
+                            Odds.Ratios = c(odds_ratios),
+                            Z.values = c(z_values),
+                            P.values = round(c(p_values), 4))
+
+# Displaying the results table
+print(results_table)
+
+```
+
+```{r}
+length(merged_df$wave1_etv)
+```
+
+```{r}
+view(merged_df)
+```
+
 #The log odds of being in the high group compared to the low group when PTS is 0 is -1.82; When PTS at time 1 is added, the log odds increase by 0.76 (OR = 2.14); PTS at Time 1 similarly affects the odds of being in the middle class versus the low class (-1.97; increased log odds to 0.99; OR = 2.70)
 
 #Results are significant and align with pattern in exposure to violence
+
+```{r}
+# Coefficients for 'mid' and 'high' categories for df_wide_2 - the really bad results
+coefficients <- matrix(c(-2.694907, -2.655741, 0.6851649, 0.5976946, 0.8156827, 1.1773147, 
+                         -0.5029275, -0.6131220, 0.2064163, -0.5464942, -0.3846249, -0.3013413, 
+                         0.9055494, 0.8617175, -0.2315693, -1.9156269, -0.2580464, -0.5266906), 
+                       ncol=9, byrow = TRUE)
+
+# Standard errors for 'mid' and 'high' categories
+std_errors <- matrix(c(1.0457773, 0.9772299, 0.6234894, 0.6027074, 0.3241923, 0.3050416, 
+                       0.4337231, 0.4096141, 0.7711326, 0.7080132, 0.7882847, 0.6792008, 
+                       0.7785927, 0.6912819, 0.8649438, 0.9299509, 0.9160596, 0.8113750), 
+                     ncol=9, byrow = TRUE)
+
+# Calculate odds ratios, z-values, and p-values
+odds_ratios <- exp(coefficients)
+z_values <- coefficients / std_errors
+p_values <- 2 * pnorm(-abs(z_values))
+
+# Variable names
+variables <- c("Intercept", "etv1", "pts1", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+
+# Categories for each coefficient set
+categories <- rep(c("mid", "high"), each = length(variables))
+
+# Creating the results table
+results_table <- data.frame(Category = categories,
+                            Variable = rep(variables, 2),
+                            Coefficients = c(coefficients),
+                            Std.Errors = c(std_errors),
+                            Odds.Ratios = c(odds_ratios),
+                            Z.values = c(z_values),
+                            P.values = round(c(p_values), 4))
+
+# Displaying the results table
+print(results_table)
+```
+
+```{r}
+# Coefficients for 'mid' and 'high' categories
+coefficients <- matrix(c(-2.655741, 0.5976946, 1.1773147, -0.6131220, -0.5464942, -0.3013413, 0.8617175, -1.9156269, -0.5266906,
+                         -2.694907, 0.6851649, 0.8156827, -0.5029275, 0.2064163, -0.3846249, 0.9055494, -0.2315693, -0.2580464), 
+                       ncol=9, byrow = TRUE)
+
+# Standard errors for 'mid' and 'high' categories
+std_errors <- matrix(c(0.9772299, 0.6027074, 0.3050416, 0.4096141, 0.7080132, 0.6792008, 0.6912819, 0.9299509, 0.8113750,
+                       1.0457773, 0.6234894, 0.3241923, 0.4337231, 0.7711326, 0.7882847, 0.7785927, 0.8649438, 0.9160596), 
+                     ncol=9, byrow = TRUE)
+
+# Calculate odds ratios, z-values, and p-values
+odds_ratios <- exp(coefficients)
+z_values <- coefficients / std_errors
+p_values <- 2 * pnorm(-abs(z_values))
+
+# Variable names
+variables <- c("Intercept", "etv1", "pts1", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+
+# Categories for each coefficient set
+categories <- rep(c("mid", "high"), each = length(variables))
+
+# Creating the results table
+results_table <- data.frame(Category = categories,
+                            Variable = rep(variables, 2),
+                            Coefficients = c(coefficients),
+                            Std.Errors = c(std_errors),
+                            Odds.Ratios = c(odds_ratios),
+                            Z.values = c(z_values),
+                            P.values = round(c(p_values), 4))
+
+# Displaying the results table
+print(results_table)
+
+```
+
+```{r}
+data1 %>% group_by(ss1.RaceAsian) %>% 
+  summarize(mean1 = mean(wave1_ptg), mean2 = mean(wave2_ptg, na.rm = TRUE), mean3 = mean(wave3_ptg, na.rm = TRUE), mean4 = mean(wave4_ptg, na.rm = TRUE))
+```
+```{r}
+data1 %>% group_by(ss1.Sex) %>% 
+  summarize(mean1 = mean(wave1_ptg), mean2 = mean(wave2_ptg, na.rm = TRUE), mean3 = mean(wave3_ptg, na.rm = TRUE), mean4 = mean(wave4_ptg, na.rm = TRUE))
+```
 
 
 ```{r}
@@ -724,6 +967,38 @@ print(results_table)
 
 ```
 ```{r}
+# Coefficients for 'mid' and 'high' categories
+coefficients <- matrix(c(-2.850799, 0.01680523, 0.8302211, 1.1165364, -0.6633143, -0.68990742, -0.05595215, 0.8155134, -1.95982866, -0.4721150,
+                         -3.463837, 0.03216293, 1.2181236, 0.7561324, -0.4879568, 0.07580734, -0.07301970, 1.0494525, 0.07627947, -0.3857532), 
+                       ncol=10, byrow = TRUE)
+
+# Standard errors for 'mid' and 'high' categories
+std_errors <- matrix(c(0.6076433, 0.09435963, 0.3772647, 0.1665592, 0.2238906, 0.3818157, 0.3706941, 0.3742053, 0.5314823, 0.4322365,
+                       0.6548465, 0.10044541, 0.3831468, 0.1776905, 0.2385173, 0.4297187, 0.4409313, 0.4320755, 0.4789691, 0.5132309), 
+                     ncol=10, byrow = TRUE)
+
+# Calculate odds ratios, z-values, and p-values
+odds_ratios <- exp(coefficients)
+z_values <- coefficients / std_errors
+p_values <- 2 * pnorm(-abs(z_values))
+
+# Variable names
+variables <- c("Intercept", "wave", "etv1", "pts1", "Gender", "ss1.RaceBlack", "ss1.RaceHispanic", "ss1.RaceAsian", "ss1.RaceMixed", "ss1.RaceOther")
+
+# Categories for each coefficient set
+categories <- rep(c("mid", "high"), each = length(variables))
+
+# Creating the results table
+results_table <- data.frame(Category = categories,
+                            Variable = rep(variables, 2),
+                            Coefficients = c(coefficients),
+                            Std.Errors = c(std_errors),
+                            Odds.Ratios = c(odds_ratios),
+                            Z.values = c(z_values),
+                            P.values = round(c(p_values), 4))
+
+# Displaying the results table
+print(results_table)
 
 ```
 
@@ -1135,6 +1410,32 @@ aov2 <- aov(etv1 ~ clust3, data = df_numeric)
 summary(aov1)
 summary(aov2)
 ```
+```{r}
+aov3 <- aov(wave1_etv ~ clust3_label_1, data = select_df)
+summary(aov3)
+aov4 <- aov(wave1_pts ~ clust3_label_1, data = select_df)
+summary(aov4)
+TukeyHSD(aov3)
+TukeyHSD(aov4)
+```
+```{r}
+colnames(select_df)
+```
+
+```{r}
+view(df_numeric)
+```
+
+
+```{r}
+select_df %>% group_by(clust3) %>% 
+  summarize(meanpts = mean(wave1_pts), meanptg = mean(wave1_ptg), meanetv = mean(wave1_etv))
+```
+```{r}
+colnames(select_df)
+```
+
+
 #FLAG Post hoc tests for pts1 and etv1  by cluster
 
 ```{r}
